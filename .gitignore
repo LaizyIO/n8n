@@ -11,7 +11,7 @@ _START_PACKAGE
 .env
 .vscode/*
 !.vscode/extensions.json
-!.vscode/settings.default.json
+!.vscode/settings.json
 .idea
 nodelinter.config.json
 **/package-lock.json
@@ -24,3 +24,8 @@ CHANGELOG-*.md
 build-storybook.log
 *.junit.xml
 junit.xml
+
+# Fichiers spécifiques à l'intégration Rikka
+.pnpm-store/
+.env.example
+Dockerfile.laizyio
