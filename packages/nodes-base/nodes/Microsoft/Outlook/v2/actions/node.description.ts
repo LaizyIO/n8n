@@ -29,10 +29,50 @@ export const description: INodeTypeDescription = {
 		{
 			name: 'microsoftOutlookOAuth2Api',
 			required: true,
+			displayOptions: {
+				show: {
+					credentialsSource: [
+						'static',
+					],
+				},
+			},
 		},
 	],
 	webhooks: sendAndWaitWebhooksDescription,
 	properties: [
+		{
+			displayName: 'Credentials Source',
+			name: 'credentialsSource',
+			type: 'options',
+			options: [
+				{
+					name: 'Static (from Credentials)',
+					value: 'static',
+					description: 'Use credentials configured in n8n',
+				},
+				{
+					name: 'Dynamic (from Input)',
+					value: 'dynamic',
+					description: 'Use credentials provided in the input data',
+				},
+			],
+			default: 'static',
+			description: 'Where to get the credentials from',
+		},
+		{
+			displayName: 'Credentials Parameter Name',
+			name: 'credentialsParameterName',
+			type: 'string',
+			displayOptions: {
+				show: {
+					credentialsSource: [
+						'dynamic',
+					],
+				},
+			},
+			default: 'credentials',
+			description: 'Name of the input parameter that contains the credentials data',
+		},
 		{
 			displayName: 'Resource',
 			name: 'resource',

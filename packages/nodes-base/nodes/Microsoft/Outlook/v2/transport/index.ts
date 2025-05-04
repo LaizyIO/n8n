@@ -20,11 +20,38 @@ export async function microsoftApiRequest(
 	uri?: string,
 	headers: IDataObject = {},
 	option: IDataObject = { json: true },
+	itemIndex = 0,
 ) {
-	const credentials = await this.getCredentials('microsoftOutlookOAuth2Api');
+	let credentials;
+
+	if (this.getNodeParameter && this.getInputData) {
+		try {
+			const credentialsSource = this.getNodeParameter('credentialsSource', itemIndex, 'static') as string;
+
+			if (credentialsSource === 'dynamic') {
+				const credentialsParameterName = this.getNodeParameter('credentialsParameterName', itemIndex, 'credentials') as string;
+				const inputData = this.getInputData();
+
+				if (inputData && inputData.length > itemIndex && inputData[itemIndex].json) {
+					credentials = inputData[itemIndex].json[credentialsParameterName];
+
+					if (!credentials) {
+						throw new Error(`No credentials found in input data with parameter name "${credentialsParameterName}"`);
+					}
+				} else {
+					throw new Error('No input data available for dynamic credentials');
+				}
+			} else {
+				credentials = await this.getCredentials('microsoftOutlookOAuth2Api');
+			}
+		} catch (error) {
+			credentials = await this.getCredentials('microsoftOutlookOAuth2Api');
+		}
+	} else {
+		credentials = await this.getCredentials('microsoftOutlookOAuth2Api');
+	}
 
 	let apiUrl = `https://graph.microsoft.com/v1.0/me${resource}`;
-	// If accessing shared mailbox
 	if (credentials.useShared && credentials.userPrincipalName) {
 		apiUrl = `https://graph.microsoft.com/v1.0/users/${credentials.userPrincipalName}${resource}`;
 	}
@@ -49,11 +76,20 @@ export async function microsoftApiRequest(
 			delete options.body;
 		}
 
-		return await this.helpers.requestWithAuthentication.call(
-			this,
-			'microsoftOutlookOAuth2Api',
-			options,
-		);
+		if (credentials && this.getNodeParameter && this.getInputData && this.getNodeParameter('credentialsSource', itemIndex, 'static') === 'dynamic') {
+			options.headers = {
+				...options.headers,
+				Authorization: `Bearer ${credentials.access_token}`,
+			};
+
+			return await this.helpers.request(options);
+		} else {
+			return await this.helpers.requestWithAuthentication.call(
+				this,
+				'microsoftOutlookOAuth2Api',
+				options,
+			);
+		}
 	} catch (error) {
 		if (
 			((error.message || '').toLowerCase().includes('bad request') ||
@@ -61,7 +97,6 @@ export async function microsoftApiRequest(
 			error.description
 		) {
 			let updatedError;
-			// Try to return the error prettier, otherwise return the original one replacing the message with the description
 			try {
 				updatedError = prepareApiError.call(this, error);
 			} catch (e) {}
@@ -84,6 +119,7 @@ export async function microsoftApiRequestAllItems(
 	body: IDataObject = {},
 	query: IDataObject = {},
 	headers: IDataObject = {},
+	itemIndex = 0,
 ) {
 	const returnData: IDataObject[] = [];
 
@@ -100,6 +136,8 @@ export async function microsoftApiRequestAllItems(
 			nextLink ? undefined : query, // Do not add query parameters as nextLink already contains them
 			nextLink,
 			headers,
+			{ json: true },
+			itemIndex,
 		);
 		nextLink = responseData['@odata.nextLink'];
 		returnData.push.apply(returnData, responseData[propertyName] as IDataObject[]);
@@ -112,6 +150,7 @@ export async function downloadAttachments(
 	this: IExecuteFunctions | IPollFunctions,
 	messages: IDataObject[] | IDataObject,
 	prefix: string,
+	itemIndex = 0,
 ) {
 	const elements: INodeExecutionData[] = [];
 	if (!Array.isArray(messages)) {
@@ -129,6 +168,9 @@ export async function downloadAttachments(
 				'GET',
 				`/messages/${message.id}/attachments`,
 				{},
+				{},
+				{},
+				itemIndex,
 			);
 			for (const [index, attachment] of attachments.entries()) {
 				const response = await microsoftApiRequest.call(
@@ -140,6 +182,7 @@ export async function downloadAttachments(
 					undefined,
 					{},
 					{ encoding: null, resolveWithFullResponse: true },
+					itemIndex,
 				);
 
 				const data = Buffer.from(response.body as string, 'utf8');
@@ -163,6 +206,7 @@ export async function getMimeContent(
 	messageId: string,
 	binaryPropertyName: string,
 	outputFileName?: string,
+	itemIndex = 0,
 ) {
 	const response = await microsoftApiRequest.call(
 		this,
@@ -173,6 +217,7 @@ export async function getMimeContent(
 		undefined,
 		{},
 		{ encoding: null, resolveWithFullResponse: true },
+		itemIndex,
 	);
 
 	let mimeType: string | undefined;
