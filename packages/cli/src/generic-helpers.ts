@@ -1,8 +1,11 @@
-import type { CredentialsEntity, User, WorkflowEntity, TagEntity } from '@n8n/db';
+import type {
+	CredentialsEntity,
+	User,
+	WorkflowEntity,
+	TagEntity,
+	AnnotationTagEntity,
+} from '@n8n/db';
 import { validate } from 'class-validator';
-
-import type { AnnotationTagEntity } from '@/databases/entities/annotation-tag-entity.ee';
-import type { TestDefinition } from '@/databases/entities/test-definition.ee';
 
 import type { PersonalizationSurveyAnswersV4 } from './controllers/survey-answers.dto';
 import { BadRequestError } from './errors/response-errors/bad-request.error';
@@ -10,7 +13,6 @@ import { BadRequestError } from './errors/response-errors/bad-request.error';
 export async function validateEntity(
 	entity:
 		| WorkflowEntity
-		| TestDefinition
 		| CredentialsEntity
 		| TagEntity
 		| AnnotationTagEntity

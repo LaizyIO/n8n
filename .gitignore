@@ -29,3 +29,4 @@ junit.xml
 .pnpm-store/
 .env.example
 Dockerfile.laizyio
+test-results.json
