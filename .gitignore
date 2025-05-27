@@ -31,3 +31,4 @@ junit.xml
 Dockerfile.laizyio
 test-results.json
 pnpm-lock.yaml
+packages/@n8n/extension-sdk/schema.json
