@@ -30,3 +30,4 @@ junit.xml
 .env.example
 Dockerfile.laizyio
 test-results.json
+pnpm-lock.yaml
