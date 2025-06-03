@@ -10,6 +10,7 @@ import type {
 import { NodeApiError, NodeOperationError } from 'n8n-workflow';
 
 import type { Zammad } from './types';
+import { ZammadDynamicCredentialsHelper } from './ZammadDynamicCredentialsHelper';
 
 export function tolerateTrailingSlash(url: string) {
 	return url.endsWith('/') ? url.substr(0, url.length - 1) : url;
@@ -30,6 +31,31 @@ export async function zammadApiRequest(
 		json: true,
 	};
 
+	// Si nous sommes dans un contexte d'exécution, vérifier les credentials dynamiques
+	if ('getInputData' in this) {
+		const dynamicCredHelper = new ZammadDynamicCredentialsHelper(this as IExecuteFunctions);
+
+		if (dynamicCredHelper.isDynamicCredentialEnabled()) {
+			// Appliquer les credentials dynamiques aux options
+			const enhancedOptions = dynamicCredHelper.applyDynamicCredentials(options);
+
+			// Ajouter le endpoint s'il n'est pas déjà dans l'URI
+			if (enhancedOptions.uri && !enhancedOptions.uri.includes(endpoint)) {
+				enhancedOptions.uri = `${enhancedOptions.uri}${endpoint}`;
+			}
+
+			// Convertir IRequestOptions en IHttpRequestOptions pour this.helpers.request
+			const httpRequestOptions = {
+				...enhancedOptions,
+				url: enhancedOptions.uri,
+			};
+			delete httpRequestOptions.uri;
+
+			return await this.helpers.request!.call(this, httpRequestOptions);
+		}
+	}
+
+	// Sinon, utiliser l'authentification standard
 	const authentication = this.getNodeParameter('authentication', 0) as 'basicAuth' | 'tokenAuth';
 
 	if (authentication === 'basicAuth') {

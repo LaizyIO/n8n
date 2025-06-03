@@ -11,6 +11,7 @@ import type {
 	IRequestOptions,
 } from 'n8n-workflow';
 import { NodeConnectionTypes, NodeOperationError } from 'n8n-workflow';
+import { addDynamicCredentialsToZammad } from './DynamicCredentialsProperties';
 
 import {
 	groupDescription,
@@ -40,7 +41,7 @@ import {
 import type { Zammad as ZammadTypes } from './types';
 
 export class Zammad implements INodeType {
-	description: INodeTypeDescription = {
+	description: INodeTypeDescription = addDynamicCredentialsToZammad({
 		displayName: 'Zammad',
 		name: 'zammad',
 		icon: 'file:zammad.svg',
@@ -124,7 +125,7 @@ export class Zammad implements INodeType {
 			...ticketDescription,
 			...userDescription,
 		],
-	};
+	});
 
 	methods = {
 		loadOptions: {
