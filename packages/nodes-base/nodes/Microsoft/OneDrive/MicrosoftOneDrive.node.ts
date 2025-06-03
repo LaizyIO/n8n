@@ -8,13 +8,14 @@ import type {
 	JsonObject,
 } from 'n8n-workflow';
 import { NodeApiError, NodeConnectionTypes, NodeOperationError } from 'n8n-workflow';
+import { addDynamicCredentialsProperties } from '../../../utils/dynamic-credentials';
 
 import { fileFields, fileOperations } from './FileDescription';
 import { folderFields, folderOperations } from './FolderDescription';
 import { microsoftApiRequest, microsoftApiRequestAllItems } from './GenericFunctions';
 
 export class MicrosoftOneDrive implements INodeType {
-	description: INodeTypeDescription = {
+	description: INodeTypeDescription = addDynamicCredentialsProperties({
 		displayName: 'Microsoft OneDrive',
 		name: 'microsoftOneDrive',
 		icon: 'file:oneDrive.svg',
@@ -57,7 +58,7 @@ export class MicrosoftOneDrive implements INodeType {
 			...folderOperations,
 			...folderFields,
 		],
-	};
+	});
 
 	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
 		const items = this.getInputData();
