@@ -14,59 +14,6 @@ export class DynamicCredentialsHelper {
 	constructor(private readonly execFunctions: IExecuteFunctions) {}
 
 	/**
-	 * Crée un proxy qui intercepte les appels de getCredentials d'un nœud
-	 * Ce proxy vérifie si les credentials dynamiques sont activées et, si c'est le cas,
-	 * retourne les credentials dynamiques au lieu des credentials standards
-	 */
-	static createCredentialsProxy<T extends object>(
-		originalMethod: Function,
-		execFunctions: IExecuteFunctions,
-	): Function {
-		return function (this: any, ...args: any[]): any {
-			try {
-				// Vérifier si les credentials dynamiques sont activées
-				const useDynamicCredentials = execFunctions.getNodeParameter(
-					'useDynamicCredentials',
-					0,
-					false,
-				) as boolean;
-
-				if (useDynamicCredentials) {
-					// Instancier le helper pour accéder aux méthodes
-					const helper = new DynamicCredentialsHelper(execFunctions);
-					// Retourner les credentials dynamiques à la place
-					return Promise.resolve(helper.getDynamicCredentials(0) as unknown as T);
-				} else {
-					// Utiliser la méthode d'origine pour obtenir les credentials standards
-					return originalMethod.apply(this, args);
-				}
-			} catch (error) {
-				// Si une erreur se produit (par exemple, le paramètre n'existe pas), continuer avec les credentials standards
-				return originalMethod.apply(this, args);
-			}
-		};
-	}
-
-	/**
-	 * Enveloppe la méthode execute d'un nœud pour intercepter les appels aux credentials
-	 * Peut être appliquée à n'importe quel type de nœud pour ajouter des credentials dynamiques
-	 */
-	static wrapNodeExecute(originalExecute: Function): Function {
-		return function (this: IExecuteFunctions, ...args: any[]): any {
-			// Remplacer la méthode getCredentials par notre proxy
-			const originalGetCredentials = this.getCredentials;
-			// Utiliser as any pour contourner les vérifications de type - ce sera géré correctement au runtime
-			(this as any).getCredentials = DynamicCredentialsHelper.createCredentialsProxy(
-				originalGetCredentials,
-				this,
-			);
-
-			// Exécuter la méthode d'origine avec notre proxy en place
-			return originalExecute.apply(this, args);
-		};
-	}
-
-	/**
 	 * Vérifie si les credentials dynamiques sont activés pour ce node
 	 */
 	isDynamicCredentialEnabled(itemIndex: number = 0): boolean {
@@ -150,7 +97,7 @@ export class DynamicCredentialsHelper {
 		switch (credentialType) {
 			case 'oauth2':
 				// credentials contient déjà { accessToken: 'valeur' }
-				newOptions.headers.Authorization = `Bearer ${credentials.accessToken}`;
+				newOptions.headers.Authorization = credentials.accessToken;
 				break;
 
 			case 'apiKey':

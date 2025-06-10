@@ -7,7 +7,6 @@ import type {
 	JsonObject,
 } from 'n8n-workflow';
 import { NodeApiError } from 'n8n-workflow';
-import { DynamicCredentialsHelper } from '../../../../../utils/dynamic-credentials';
 
 export async function microsoftApiRequest(
 	this: IExecuteFunctions | ILoadOptionsFunctions,
@@ -31,27 +30,6 @@ export async function microsoftApiRequest(
 	try {
 		if (Object.keys(headers).length !== 0) {
 			options.headers = Object.assign({}, options.headers, headers);
-		}
-
-		// Si nous sommes dans un contexte d'exécution, vérifier les credentials dynamiques
-		if ('getInputData' in this) {
-			const dynamicCredHelper = new DynamicCredentialsHelper(this as IExecuteFunctions);
-
-			if (dynamicCredHelper.isDynamicCredentialEnabled()) {
-				// Appliquer les credentials dynamiques aux options
-				const enhancedOptions = dynamicCredHelper.applyDynamicCredentials(
-					options,
-				) as IRequestOptions;
-
-				// Convertir IRequestOptions en IHttpRequestOptions pour this.helpers.request
-				const httpRequestOptions = {
-					...enhancedOptions,
-					url: enhancedOptions.uri,
-				};
-				delete httpRequestOptions.uri;
-
-				return await this.helpers.request!.call(this, httpRequestOptions);
-			}
 		}
 
 		// Utiliser la méthode standard pour les credentials

@@ -149,5 +149,12 @@ export function addDynamicCredentialsProperties(
 		...(newDescription.properties || []),
 	];
 
+	// Modifier les credentials pour les rendre optionnels (required: false)
+	if (newDescription.credentials) {
+		newDescription.credentials = newDescription.credentials.map((credential) => {
+			return { ...credential, required: false };
+		});
+	}
+
 	return newDescription;
 }
