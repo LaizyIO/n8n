@@ -9,6 +9,7 @@ import type {
 	IPollFunctions,
 } from 'n8n-workflow';
 import { NodeApiError } from 'n8n-workflow';
+
 import { DynamicCredentialsHelper } from '../../../utils/dynamic-credentials';
 
 export async function microsoftApiRequest(

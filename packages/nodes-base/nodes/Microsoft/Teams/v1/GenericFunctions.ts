@@ -7,6 +7,7 @@ import type {
 	IRequestOptions,
 } from 'n8n-workflow';
 import { NodeApiError } from 'n8n-workflow';
+import { DynamicCredentialsHelper } from '../../../../utils/dynamic-credentials';
 
 export async function microsoftApiRequest(
 	this: IExecuteFunctions | ILoadOptionsFunctions,
@@ -18,6 +19,19 @@ export async function microsoftApiRequest(
 	uri?: string,
 	headers: IDataObject = {},
 ): Promise<any> {
+	const dynamicCredHelper = new DynamicCredentialsHelper(this as any);
+	const dynamicCredentialsEnabled = dynamicCredHelper.isDynamicCredentialEnabled();
+
+	let credentials: any;
+	if (!dynamicCredentialsEnabled) {
+		credentials = await this.getCredentials('microsoftTeamsOAuth2Api');
+	}
+
+	let apiUrl = `https://graph.microsoft.com/v1.0/me${resource}`;
+	if (!dynamicCredentialsEnabled && credentials?.useShared && credentials.userPrincipalName) {
+		apiUrl = `https://graph.microsoft.com/v1.0/users/${credentials.userPrincipalName}${resource}`;
+	}
+
 	const options: IRequestOptions = {
 		headers: {
 			'Content-Type': 'application/json',
@@ -32,7 +46,17 @@ export async function microsoftApiRequest(
 		if (Object.keys(headers).length !== 0) {
 			options.headers = Object.assign({}, options.headers, headers);
 		}
-		return await this.helpers.requestOAuth2.call(this, 'microsoftTeamsOAuth2Api', options);
+		if (dynamicCredentialsEnabled && dynamicCredHelper) {
+			const enhancedOptions = dynamicCredHelper.applyDynamicCredentials(options) as IRequestOptions;
+			const httpRequestOptions = { ...enhancedOptions, url: enhancedOptions.uri };
+			delete httpRequestOptions.uri;
+			return await this.helpers.request!.call(this, httpRequestOptions);
+		}
+		return await this.helpers.requestWithAuthentication.call(
+			this,
+			'microsoftTeamsOAuth2Api',
+			options,
+		);
 	} catch (error) {
 		throw new NodeApiError(this.getNode(), error as JsonObject);
 	}

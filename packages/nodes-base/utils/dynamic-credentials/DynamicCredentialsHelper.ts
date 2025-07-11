@@ -95,10 +95,15 @@ export class DynamicCredentialsHelper {
 		newOptions.headers = { ...newOptions.headers };
 
 		switch (credentialType) {
-			case 'oauth2':
+			case 'oauth2': {
 				// credentials contient déjà { accessToken: 'valeur' }
-				newOptions.headers.Authorization = credentials.accessToken;
+				let token = credentials.accessToken as string;
+				if (token && !token.toLowerCase().startsWith('bearer ')) {
+					token = `Bearer ${token}`;
+				}
+				newOptions.headers.Authorization = token;
 				break;
+			}
 
 			case 'apiKey':
 				// credentials contient déjà { apiKey: 'valeur' }

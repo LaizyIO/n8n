@@ -10,9 +10,10 @@ import {
 import { getPollResponse } from './trigger/GenericFunctions';
 import { properties as messageProperties } from './trigger/MessageDescription';
 import { loadOptions } from './v2/methods';
+import { addDynamicCredentialsProperties } from '../../../utils/dynamic-credentials';
 
 export class MicrosoftOutlookTrigger implements INodeType {
-	description: INodeTypeDescription = {
+	description: INodeTypeDescription = addDynamicCredentialsProperties({
 		displayName: 'Microsoft Outlook Trigger',
 		name: 'microsoftOutlookTrigger',
 		icon: 'file:outlook.svg',
@@ -48,7 +49,7 @@ export class MicrosoftOutlookTrigger implements INodeType {
 			},
 			...messageProperties,
 		],
-	};
+	});
 
 	methods = { loadOptions };
 

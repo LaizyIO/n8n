@@ -30,6 +30,7 @@ import {
 	messageAttachmentOperations,
 } from './MessageAttachmentDescription';
 import { messageFields, messageOperations } from './MessageDescription';
+import { addDynamicCredentialsProperties } from '../../../../utils/dynamic-credentials';
 
 const versionDescription: INodeTypeDescription = {
 	displayName: 'Microsoft Outlook',
@@ -106,10 +107,10 @@ export class MicrosoftOutlookV1 implements INodeType {
 	description: INodeTypeDescription;
 
 	constructor(baseDescription: INodeTypeBaseDescription) {
-		this.description = {
+		this.description = addDynamicCredentialsProperties({
 			...baseDescription,
 			...versionDescription,
-		};
+		});
 	}
 
 	methods = {

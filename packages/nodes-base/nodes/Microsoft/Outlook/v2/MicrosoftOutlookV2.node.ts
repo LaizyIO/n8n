@@ -8,16 +8,17 @@ import type {
 import { description } from './actions/node.description';
 import { router } from './actions/router';
 import { loadOptions, listSearch } from './methods';
+import { addDynamicCredentialsProperties } from '../../../../utils/dynamic-credentials';
 import { sendAndWaitWebhook } from '../../../../utils/sendAndWait/utils';
 
 export class MicrosoftOutlookV2 implements INodeType {
 	description: INodeTypeDescription;
 
 	constructor(baseDescription: INodeTypeBaseDescription) {
-		this.description = {
+		this.description = addDynamicCredentialsProperties({
 			...baseDescription,
 			...description,
-		};
+		});
 	}
 
 	methods = { loadOptions, listSearch };

@@ -8,11 +8,11 @@ import type {
 	JsonObject,
 } from 'n8n-workflow';
 import { NodeApiError, NodeConnectionTypes, NodeOperationError } from 'n8n-workflow';
-import { addDynamicCredentialsProperties } from '../../../utils/dynamic-credentials';
 
 import { fileFields, fileOperations } from './FileDescription';
 import { folderFields, folderOperations } from './FolderDescription';
 import { microsoftApiRequest, microsoftApiRequestAllItems } from './GenericFunctions';
+import { addDynamicCredentialsProperties } from '../../../utils/dynamic-credentials';
 
 export class MicrosoftOneDrive implements INodeType {
 	description: INodeTypeDescription = addDynamicCredentialsProperties({

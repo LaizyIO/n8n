@@ -19,6 +19,7 @@ import {
 	prepareMessage,
 } from './GenericFunctions';
 import { taskFields, taskOperations } from './TaskDescription';
+import { addDynamicCredentialsProperties } from '../../../../utils/dynamic-credentials';
 import { oldVersionNotice } from '../../../../utils/descriptions';
 
 const versionDescription: INodeTypeDescription = {
@@ -85,10 +86,10 @@ export class MicrosoftTeamsV1 implements INodeType {
 	description: INodeTypeDescription;
 
 	constructor(baseDescription: INodeTypeBaseDescription) {
-		this.description = {
+		this.description = addDynamicCredentialsProperties({
 			...baseDescription,
 			...versionDescription,
-		};
+		});
 	}
 
 	methods = {

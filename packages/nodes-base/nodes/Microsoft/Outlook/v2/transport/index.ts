@@ -9,6 +9,7 @@ import type {
 	IPollFunctions,
 } from 'n8n-workflow';
 
+import { DynamicCredentialsHelper } from '../../../../../utils/dynamic-credentials';
 import { prepareApiError } from '../helpers/utils';
 
 export async function microsoftApiRequest(
@@ -21,11 +22,21 @@ export async function microsoftApiRequest(
 	headers: IDataObject = {},
 	option: IDataObject = { json: true },
 ) {
-	const credentials = await this.getCredentials('microsoftOutlookOAuth2Api');
+	let dynamicCredHelper: DynamicCredentialsHelper | undefined;
+	let dynamicCredentialsEnabled = false;
+	if ('getInputData' in this) {
+		dynamicCredHelper = new DynamicCredentialsHelper(this as IExecuteFunctions);
+		dynamicCredentialsEnabled = dynamicCredHelper.isDynamicCredentialEnabled();
+	}
+
+	let credentials: IDataObject | undefined;
+	if (!dynamicCredentialsEnabled) {
+		credentials = await this.getCredentials('microsoftOutlookOAuth2Api');
+	}
 
 	let apiUrl = `https://graph.microsoft.com/v1.0/me${resource}`;
-	// If accessing shared mailbox
-	if (credentials.useShared && credentials.userPrincipalName) {
+	// If accessing shared mailbox when using stored credentials
+	if (!dynamicCredentialsEnabled && credentials?.useShared && credentials.userPrincipalName) {
 		apiUrl = `https://graph.microsoft.com/v1.0/users/${credentials.userPrincipalName}${resource}`;
 	}
 
@@ -47,6 +58,16 @@ export async function microsoftApiRequest(
 
 		if (Object.keys(body).length === 0) {
 			delete options.body;
+		}
+
+		if (dynamicCredentialsEnabled && dynamicCredHelper) {
+			const enhancedOptions = dynamicCredHelper.applyDynamicCredentials(options) as IRequestOptions;
+			const httpRequestOptions = {
+				...enhancedOptions,
+				url: enhancedOptions.uri,
+			};
+			delete httpRequestOptions.uri;
+			return await this.helpers.request!.call(this, httpRequestOptions);
 		}
 
 		return await this.helpers.requestWithAuthentication.call(
