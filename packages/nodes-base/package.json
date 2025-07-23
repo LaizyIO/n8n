@@ -836,6 +836,7 @@
       "dist/nodes/Zoho/ZohoCrm.node.js",
       "dist/nodes/Zoom/Zoom.node.js",
       "dist/nodes/Zulip/Zulip.node.js",
+      "dist/nodes/LaizyHitl/LaizyHitl.node.js",
       "dist/nodes/Transform/Aggregate/Aggregate.node.js",
       "dist/nodes/Transform/Limit/Limit.node.js",
       "dist/nodes/Transform/RemoveDuplicates/RemoveDuplicates.node.js",
