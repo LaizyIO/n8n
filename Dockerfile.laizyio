@@ -1,0 +1,57 @@
+# 1. Créer une image pour construire n8n
+FROM node:20-alpine AS builder
+
+# Installer les dépendances nécessaires
+RUN apk add --update git python3 build-base jq openssh graphicsmagick tzdata ca-certificates libc6-compat
+
+# Installer pnpm et full-icu
+RUN npm install -g pnpm@10.2.1 full-icu@1.5.0
+
+# Préparer l'environnement de travail
+WORKDIR /src
+
+# Copier le code source
+COPY . /src
+
+# Installer le package additionnel, les dépendances et construire le projet
+RUN corepack enable &&     corepack prepare pnpm@10.2.1 --activate &&     DOCKER_BUILD=true pnpm add @n8n/n8n-nodes-langchain --filter n8n &&     DOCKER_BUILD=true pnpm install
+RUN DOCKER_BUILD=true pnpm build
+
+# Supprimer les dépendances de développement
+RUN jq 'del(.pnpm.patchedDependencies)' package.json > package.json.tmp; mv package.json.tmp package.json
+
+# Supprimer les fichiers source et autres fichiers inutiles
+RUN find . -type f -name "*.ts" -o -name "*.js.map" -o -name "*.vue" -o -name "tsconfig.json" -o -name "*.tsbuildinfo" | xargs rm -rf
+
+# Déployer le package n8n dans /compiled
+RUN mkdir /compiled
+RUN NODE_ENV=production DOCKER_BUILD=true pnpm --filter=n8n --prod --no-optional --legacy deploy /compiled
+
+# 2. Créer l'image finale
+FROM node:20-alpine
+ENV NODE_ENV=production
+
+ARG N8N_RELEASE_TYPE=stable
+ENV N8N_RELEASE_TYPE=${N8N_RELEASE_TYPE}
+
+# Installer les dépendances nécessaires
+RUN apk add --update git python3 build-base openssh graphicsmagick tini tzdata ca-certificates libc6-compat su-exec
+
+WORKDIR /home/node
+COPY --from=builder /compiled /usr/local/lib/node_modules/n8n
+COPY docker-entrypoint.sh /
+
+# Créer les liens symboliques pour n8n
+RUN cd /usr/local/bin && ln -s ../lib/node_modules/n8n/bin/n8n n8n
+
+# Créer le dossier de configuration n8n
+RUN mkdir -p /home/node/.n8n && chown -R node:node /home/node/.n8n
+
+# Rendre le script d'entrée exécutable
+RUN chmod +x /docker-entrypoint.sh
+
+# Exposer le port
+EXPOSE 5678/tcp
+
+# Lancement avec docker-entrypoint.sh
+ENTRYPOINT ["tini", "--", "/docker-entrypoint.sh"]

@@ -1,28 +1,12 @@
 import type { INodeProperties, IExecuteFunctions } from 'n8n-workflow';
-import axios from 'axios';
+import { v4 as uuidv4 } from 'uuid';
 import {
 	getSendAndWaitConfig,
 	getSendAndWaitProperties,
 } from '../../../utils/sendAndWait/utils';
 
 // Define our custom properties that will be added to the standard send and wait properties
-const customProperties: INodeProperties[] = [
-	{
-		displayName: 'Callback URL',
-		name: 'callbackUrl',
-		type: 'string',
-		default: '',
-		required: true,
-		description: 'URL to send the callback notification to your app',
-	},
-	{
-		displayName: 'HITL ID',
-		name: 'hitlId',
-		type: 'string',
-		default: '={{ $execution.id }}',
-		description: 'Unique identifier for this HITL request (defaults to execution ID)',
-	},
-];
+const customProperties: INodeProperties[] = [];
 
 // Use n8n's getSendAndWaitProperties function like Teams does
 export const description: INodeProperties[] = getSendAndWaitProperties(
@@ -36,66 +20,40 @@ export const description: INodeProperties[] = getSendAndWaitProperties(
 );
 
 export async function execute(this: IExecuteFunctions, i: number, _instanceId: string) {
-	// Get our custom parameters
-	const callbackUrl = this.getNodeParameter('callbackUrl', i, '') as string;
-	const hitlId = this.getNodeParameter('hitlId', i, '') as string;
-	const items = this.getInputData();
-	const responseType = this.getNodeParameter('responseType', i, 'approval') as string;
-	
 	// Use n8n's getSendAndWaitConfig to get the proper configuration
 	const config = getSendAndWaitConfig(this);
 	
-	// Get form fields information for customForm type (for callback info only)
-	let formFields = null;
+	const items = this.getInputData();
+	const responseType = this.getNodeParameter('responseType', i, 'approval') as string;
+	
+	// Generate unique ID for this HITL interaction
+	const hitlId = uuidv4();
+	
+	// Prepare form fields for customForm
+	let formFields: any[] = [];
 	if (responseType === 'customForm') {
-		const defineForm = this.getNodeParameter('defineForm', i, 'fields') as 'fields' | 'json';
-		
+		const defineForm = this.getNodeParameter('defineForm', i) as string;
 		if (defineForm === 'fields') {
-			// Get the fields from the collection
-			formFields = this.getNodeParameter('formFields.values', i, []) as any[];
-		} else {
-			// Get JSON definition
-			const jsonOutput = this.getNodeParameter('jsonOutput', i, '') as string;
-			try {
-				formFields = JSON.parse(jsonOutput);
-			} catch {
-				formFields = [];
-			}
+			const fields = this.getNodeParameter('formFields.values', i, []) as Array<{
+				fieldLabel: string;
+				fieldType: string;
+				requiredField?: boolean;
+			}>;
+			formFields = fields.map((field, index) => ({
+				...field,
+				fieldId: `field-${index}`,
+			}));
 		}
 	}
+
+	console.log('[HITL Node] Initial execution - putting execution to wait for webhook response');
 	
-	// Send callback to app asynchronously (don't wait for it)
-	if (callbackUrl) {
-		const callbackData = {
-			type: 'hitl_request',
-			hitlId,
-			title: config.title,
-			message: config.message,
-			resumeUrl: config.url,
-			responseType,
-			options: config.options,
-			formFields: formFields, // For app info only
-			itemData: items[i]?.json || {},
-			timestamp: new Date().toISOString(),
-		};
-		
-		// Send callback asynchronously without waiting
-		axios.post(callbackUrl, callbackData, {
-			headers: { 'Content-Type': 'application/json' },
-			timeout: 30000,
-		}).then(() => {
-			console.log('HITL callback sent successfully');
-		}).catch((error) => {
-			console.error('Failed to send HITL callback:', error.message);
-		});
-	}
+	// Put the execution to wait - n8n will handle the webhook response
+	const waitTill = new Date(Date.now() + 3600000); // 1 hour timeout by default
+	await this.putExecutionToWait(waitTill);
 	
-	// Return the current item with HITL information - n8n will handle the webhook pause/resume automatically
-	const currentItem = items[i]?.json || {};
-	
-	// Add HITL information to the output
+	// Return data with HITL information for the backend to detect
 	const hitlOutput = {
-		...currentItem,
 		hitl: {
 			hitlId,
 			title: config.title,
@@ -106,7 +64,9 @@ export async function execute(this: IExecuteFunctions, i: number, _instanceId: s
 			formFields: formFields,
 			timestamp: new Date().toISOString(),
 		},
+		// Include original input data as well
+		...items[i]?.json || {}
 	};
 	
-	return hitlOutput;
+	return [{ json: hitlOutput }];
 }

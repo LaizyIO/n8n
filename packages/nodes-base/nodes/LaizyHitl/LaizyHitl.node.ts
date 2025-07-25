@@ -7,9 +7,9 @@ import type {
 import { NodeConnectionTypes, SEND_AND_WAIT_OPERATION } from 'n8n-workflow';
 
 import { router } from './actions';
-import { sendAndWaitWebhook } from '../../utils/sendAndWait/utils';
-import { sendAndWaitWebhooksDescription } from '../../utils/sendAndWait/descriptions';
+
 import * as sendAndWaitOperation from './actions/sendAndWait.operation';
+import { customHitlWebhook } from './webhook/hitl.webhook';
 
 export class LaizyHitl implements INodeType {
 	description: INodeTypeDescription = {
@@ -25,7 +25,26 @@ export class LaizyHitl implements INodeType {
 		},
 		inputs: [NodeConnectionTypes.Main],
 		outputs: [NodeConnectionTypes.Main],
-		webhooks: sendAndWaitWebhooksDescription,
+		webhooks: [
+			{
+				name: 'default',
+				httpMethod: 'GET',
+				responseMode: '={{$parameter["responseMode"]}}',
+				responseData: '={{$parameter["responseData"]}}',
+				path: '={{ $nodeId }}',
+				restartWebhook: true,
+				isFullPath: true,
+			},
+			{
+				name: 'default',
+				httpMethod: 'POST',
+				responseMode: '={{$parameter["responseMode"]}}',
+				responseData: '={{$parameter["responseData"]}}',
+				path: '={{ $nodeId }}',
+				restartWebhook: true,
+				isFullPath: true,
+			},
+		],
 		properties: [
 			{
 				displayName: 'Resource',
@@ -60,11 +79,59 @@ export class LaizyHitl implements INodeType {
 				],
 				default: SEND_AND_WAIT_OPERATION,
 			},
+			{
+				displayName: 'Respond',
+				name: 'responseMode',
+				type: 'options',
+				options: [
+					{
+						name: 'Immediately (Redis Only)',
+						value: 'onReceived',
+						description: 'Respond immediately with confirmation, use Redis pub/sub for data',
+					},
+					{
+						name: 'When Workflow Finishes',
+						value: 'lastNode',
+						description: 'Wait for workflow to finish, return result in HTTP response',
+					},
+				],
+				default: 'onReceived',
+				description: 'How to respond to the webhook HTTP request',
+			},
+			{
+				displayName: 'Response Data',
+				name: 'responseData',
+				type: 'options',
+				displayOptions: {
+					show: {
+						responseMode: ['lastNode'],
+					},
+				},
+				options: [
+					{
+						name: 'First Entry JSON',
+						value: 'firstEntryJson',
+						description: 'Return JSON data of first workflow result',
+					},
+					{
+						name: 'All Entries',
+						value: 'allEntries',
+						description: 'Return all workflow results as array',
+					},
+					{
+						name: 'HITL Response Only',
+						value: 'hitlOnly',
+						description: 'Return only the HITL response data',
+					},
+				],
+				default: 'firstEntryJson',
+				description: 'What data to return in HTTP response',
+			},
 			...sendAndWaitOperation.description,
 		],
 	};
 
-	webhook = sendAndWaitWebhook;
+	webhook = customHitlWebhook;
 
 	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
 		return await router.call(this);
