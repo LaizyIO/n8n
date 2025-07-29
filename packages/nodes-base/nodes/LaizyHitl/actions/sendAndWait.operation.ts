@@ -23,7 +23,6 @@ export async function execute(this: IExecuteFunctions, i: number, _instanceId: s
 	// Use n8n's getSendAndWaitConfig to get the proper configuration
 	const config = getSendAndWaitConfig(this);
 	
-	const items = this.getInputData();
 	const responseType = this.getNodeParameter('responseType', i, 'approval') as string;
 	
 	// Generate unique ID for this HITL interaction
@@ -52,21 +51,19 @@ export async function execute(this: IExecuteFunctions, i: number, _instanceId: s
 	const waitTill = new Date(Date.now() + 3600000); // 1 hour timeout by default
 	await this.putExecutionToWait(waitTill);
 	
-	// Return data with HITL information for the backend to detect
-	const hitlOutput = {
-		hitl: {
-			hitlId,
-			title: config.title,
-			message: config.message,
-			resumeUrl: config.url,
-			responseType,
-			options: config.options,
-			formFields: formFields,
-			timestamp: new Date().toISOString(),
-		},
-		// Include original input data as well
-		...items[i]?.json || {}
+	// Return only the HITL data in a consistent, minimal structure
+	// This ensures the backend always receives the same format regardless of node position
+	const hitlData = {
+		hitlId,
+		title: config.title,
+		message: config.message,
+		resumeUrl: config.url,
+		responseType,
+		options: config.options,
+		formFields: formFields,
+		timestamp: new Date().toISOString(),
 	};
 	
-	return [{ json: hitlOutput }];
+	// Always return the hitl data directly, no matter the workflow context
+	return [{ json: { hitl: hitlData } }];
 }
