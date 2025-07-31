@@ -34,11 +34,23 @@ export async function customHitlWebhook(
 			responseData = (bodyData as any).data;
 		} else if (typeof bodyData === 'object') {
 			// Form data with field-X pattern or direct object
-			if ('field-0' in bodyData) {
-				// FreeText response
-				responseData = { text: (bodyData as any)['field-0'] };
+			const fieldKeys = Object.keys(bodyData).filter(key => key.startsWith('field-'));
+			
+			if (fieldKeys.length > 0) {
+				// Check if this is a single field (FreeText) or multiple fields (CustomForm)
+				if (fieldKeys.length === 1 && fieldKeys[0] === 'field-0') {
+					// Single field FreeText response
+					responseData = { text: (bodyData as any)['field-0'] };
+				} else {
+					// Multiple fields CustomForm response - preserve all field data
+					responseData = {};
+					fieldKeys.forEach(key => {
+						const fieldIndex = key.replace('field-', '');
+						responseData[`field_${fieldIndex}`] = (bodyData as any)[key];
+					});
+				}
 			} else {
-				// CustomForm response - preserve all fields
+				// Direct object without field-X pattern
 				responseData = bodyData as IDataObject;
 			}
 		} else {
