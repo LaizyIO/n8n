@@ -10,6 +10,7 @@ import type {
 } from 'n8n-workflow';
 
 import { prepareApiError } from '../helpers/utils';
+import { DynamicCredentialsHelper } from '../../../../../utils/dynamic-credentials';
 
 export async function microsoftApiRequest(
 	this: IExecuteFunctions | IExecuteSingleFunctions | ILoadOptionsFunctions | IPollFunctions,
@@ -21,6 +22,49 @@ export async function microsoftApiRequest(
 	headers: IDataObject = {},
 	option: IDataObject = { json: true },
 ) {
+	// Si nous sommes dans un contexte d'exécution, vérifier les credentials dynamiques
+	if ('getInputData' in this) {
+		const dynamicCredHelper = new DynamicCredentialsHelper(this as IExecuteFunctions);
+
+		if (dynamicCredHelper.isDynamicCredentialEnabled()) {
+			// Utiliser les credentials dynamiques avec URL par défaut
+			const apiUrl = `https://graph.microsoft.com/v1.0/me${resource}`;
+			
+			const options: IRequestOptions = {
+				headers: {
+					'Content-Type': 'application/json',
+				},
+				method,
+				body,
+				qs,
+				uri: uri || apiUrl,
+			};
+
+			Object.assign(options, option);
+
+			if (Object.keys(headers).length !== 0) {
+				options.headers = Object.assign({}, options.headers, headers);
+			}
+
+			if (Object.keys(body).length === 0) {
+				delete options.body;
+			}
+
+			// Appliquer les credentials dynamiques
+			const enhancedOptions = dynamicCredHelper.applyDynamicCredentials(options) as IRequestOptions;
+
+			// Convertir pour this.helpers.request
+			const httpRequestOptions = {
+				...enhancedOptions,
+				url: enhancedOptions.uri,
+			};
+			delete httpRequestOptions.uri;
+
+			return await this.helpers.request!.call(this, httpRequestOptions);
+		}
+	}
+
+	// Utiliser les credentials standard
 	const credentials = await this.getCredentials('microsoftOutlookOAuth2Api');
 
 	let apiUrl = `https://graph.microsoft.com/v1.0/me${resource}`;

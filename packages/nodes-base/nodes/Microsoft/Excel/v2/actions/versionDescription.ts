@@ -1,12 +1,13 @@
 /* eslint-disable n8n-nodes-base/node-filename-against-convention */
 import { NodeConnectionTypes, type INodeTypeDescription } from 'n8n-workflow';
+import { addDynamicCredentialsProperties } from '../../../../../utils/dynamic-credentials';
 
 import * as table from './table/Table.resource';
 import * as workbook from './workbook/Workbook.resource';
 import * as worksheet from './worksheet/Worksheet.resource';
 
-// Description de base sans les credentials dynamiques
-export const versionDescription: INodeTypeDescription = {
+// Description de base avec les credentials dynamiques
+export const versionDescription: INodeTypeDescription = addDynamicCredentialsProperties({
 	displayName: 'Microsoft Excel 365',
 	name: 'microsoftExcel',
 	icon: 'file:excel.svg',
@@ -61,4 +62,4 @@ export const versionDescription: INodeTypeDescription = {
 		...workbook.description,
 		...worksheet.description,
 	],
-};
+});

@@ -6,6 +6,7 @@ import type {
 	IHttpRequestMethods,
 } from 'n8n-workflow';
 import { NodeApiError, NodeOperationError } from 'n8n-workflow';
+import { DynamicCredentialsHelper } from '../../../utils/dynamic-credentials';
 
 export async function msGraphSecurityApiRequest(
 	this: IExecuteFunctions,
@@ -15,6 +16,46 @@ export async function msGraphSecurityApiRequest(
 	qs: IDataObject = {},
 	headers: IDataObject = {},
 ) {
+	// Vérifier les credentials dynamiques d'abord
+	const dynamicCredHelper = new DynamicCredentialsHelper(this);
+
+	if (dynamicCredHelper.isDynamicCredentialEnabled()) {
+		// Utiliser les credentials dynamiques
+		const options: IRequestOptions = {
+			method,
+			body,
+			qs,
+			uri: `https://graph.microsoft.com/v1.0/security${endpoint}`,
+			json: true,
+			headers: {},
+		};
+
+		if (!Object.keys(body).length) {
+			delete options.body;
+		}
+
+		if (!Object.keys(qs).length) {
+			delete options.qs;
+		}
+
+		if (Object.keys(headers).length) {
+			options.headers = { ...options.headers, ...headers };
+		}
+
+		// Appliquer les credentials dynamiques
+		const enhancedOptions = dynamicCredHelper.applyDynamicCredentials(options) as IRequestOptions;
+
+		// Convertir pour this.helpers.request
+		const httpRequestOptions = {
+			...enhancedOptions,
+			url: enhancedOptions.uri,
+		};
+		delete httpRequestOptions.uri;
+
+		return await this.helpers.request(httpRequestOptions);
+	}
+
+	// Utiliser les credentials OAuth2 standard
 	const {
 		oauthTokenData: { access_token },
 	} = await this.getCredentials<{

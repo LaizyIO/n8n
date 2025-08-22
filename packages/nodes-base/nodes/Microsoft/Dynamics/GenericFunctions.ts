@@ -9,6 +9,7 @@ import type {
 	IRequestOptions,
 } from 'n8n-workflow';
 import { NodeApiError } from 'n8n-workflow';
+import { DynamicCredentialsHelper } from '../../../utils/dynamic-credentials';
 
 export async function microsoftApiRequest(
 	this: IExecuteFunctions | ILoadOptionsFunctions,
@@ -42,6 +43,33 @@ export async function microsoftApiRequest(
 		if (Object.keys(option).length !== 0) {
 			options = Object.assign({}, options, option);
 		}
+
+		// Si nous sommes dans un contexte d'exécution, vérifier les credentials dynamiques
+		if ('getInputData' in this) {
+			const dynamicCredHelper = new DynamicCredentialsHelper(this as IExecuteFunctions);
+
+			if (dynamicCredHelper.isDynamicCredentialEnabled()) {
+				// Pour Dynamics CRM, nous devons utiliser l'URL de base par défaut si pas d'URI spécifique
+				if (!uri) {
+					options.uri = `https://graph.microsoft.com/v1.0/me${resource}`;
+				}
+
+				// Appliquer les credentials dynamiques aux options
+				const enhancedOptions = dynamicCredHelper.applyDynamicCredentials(
+					options,
+				) as IRequestOptions;
+
+				// Convertir IRequestOptions en IHttpRequestOptions pour this.helpers.request
+				const httpRequestOptions = {
+					...enhancedOptions,
+					url: enhancedOptions.uri,
+				};
+				delete httpRequestOptions.uri;
+
+				return await this.helpers.request!.call(this, httpRequestOptions);
+			}
+		}
+
 		return await this.helpers.requestOAuth2.call(this, 'microsoftDynamicsOAuth2Api', options, {
 			property: 'id_token',
 		});

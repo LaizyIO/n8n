@@ -6,6 +6,7 @@ import type {
 	INodeTypeDescription,
 } from 'n8n-workflow';
 import { NodeConnectionTypes } from 'n8n-workflow';
+import { addDynamicCredentialsProperties } from '../../../utils/dynamic-credentials';
 
 import {
 	secureScoreControlProfileFields,
@@ -20,7 +21,7 @@ import {
 } from './GenericFunctions';
 
 export class MicrosoftGraphSecurity implements INodeType {
-	description: INodeTypeDescription = {
+	description: INodeTypeDescription = addDynamicCredentialsProperties({
 		displayName: 'Microsoft Graph Security',
 		name: 'microsoftGraphSecurity',
 		icon: 'file:microsoftGraph.svg',
@@ -63,7 +64,7 @@ export class MicrosoftGraphSecurity implements INodeType {
 			...secureScoreControlProfileOperations,
 			...secureScoreControlProfileFields,
 		],
-	};
+	});
 
 	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
 		const items = this.getInputData();

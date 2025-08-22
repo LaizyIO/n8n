@@ -9,6 +9,7 @@ import type {
 	INodeTypeDescription,
 } from 'n8n-workflow';
 import { NodeConnectionTypes, NodeOperationError } from 'n8n-workflow';
+import { addDynamicCredentialsProperties } from '../../../utils/dynamic-credentials';
 
 import { microsoftApiRequest, microsoftApiRequestAllItems } from './GenericFunctions';
 import { linkedResourceFields, linkedResourceOperations } from './LinkedResourceDescription';
@@ -16,7 +17,7 @@ import { listFields, listOperations } from './ListDescription';
 import { taskFields, taskOperations } from './TaskDescription';
 
 export class MicrosoftToDo implements INodeType {
-	description: INodeTypeDescription = {
+	description: INodeTypeDescription = addDynamicCredentialsProperties({
 		displayName: 'Microsoft To Do',
 		name: 'microsoftToDo',
 		icon: 'file:todo.svg',
@@ -65,7 +66,7 @@ export class MicrosoftToDo implements INodeType {
 			...listOperations,
 			...listFields,
 		],
-	};
+	});
 
 	methods = {
 		loadOptions: {

@@ -1,5 +1,6 @@
 /* eslint-disable n8n-nodes-base/node-filename-against-convention */
 import { NodeConnectionTypes, type INodeTypeDescription } from 'n8n-workflow';
+import { addDynamicCredentialsProperties } from '../../../../../utils/dynamic-credentials';
 
 import * as calendar from './calendar';
 import * as contact from './contact';
@@ -11,7 +12,7 @@ import * as message from './message';
 import * as messageAttachment from './messageAttachment';
 import { sendAndWaitWebhooksDescription } from '../../../../../utils/sendAndWait/descriptions';
 
-export const description: INodeTypeDescription = {
+export const description: INodeTypeDescription = addDynamicCredentialsProperties({
 	displayName: 'Microsoft Outlook',
 	name: 'microsoftOutlook',
 	group: ['transform'],
@@ -83,4 +84,4 @@ export const description: INodeTypeDescription = {
 		...message.description,
 		...messageAttachment.description,
 	],
-};
+});

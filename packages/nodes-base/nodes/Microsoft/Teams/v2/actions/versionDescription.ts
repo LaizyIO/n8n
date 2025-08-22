@@ -1,5 +1,6 @@
 /* eslint-disable n8n-nodes-base/node-filename-against-convention */
 import { NodeConnectionTypes, type INodeTypeDescription } from 'n8n-workflow';
+import { addDynamicCredentialsProperties } from '../../../../../utils/dynamic-credentials';
 
 import * as channel from './channel';
 import * as channelMessage from './channelMessage';
@@ -7,7 +8,7 @@ import * as chatMessage from './chatMessage';
 import * as task from './task';
 import { sendAndWaitWebhooksDescription } from '../../../../../utils/sendAndWait/descriptions';
 
-export const versionDescription: INodeTypeDescription = {
+export const versionDescription: INodeTypeDescription = addDynamicCredentialsProperties({
 	displayName: 'Microsoft Teams',
 	name: 'microsoftTeams',
 	icon: 'file:teams.svg',
@@ -59,4 +60,4 @@ export const versionDescription: INodeTypeDescription = {
 		...chatMessage.description,
 		...task.description,
 	],
-};
+});

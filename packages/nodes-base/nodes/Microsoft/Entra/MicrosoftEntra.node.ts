@@ -5,12 +5,13 @@ import type {
 	INodeTypeDescription,
 } from 'n8n-workflow';
 import { NodeConnectionTypes } from 'n8n-workflow';
+import { addDynamicCredentialsProperties } from '../../../utils/dynamic-credentials';
 
 import { groupFields, groupOperations, userFields, userOperations } from './descriptions';
 import { getGroupProperties, getGroups, getUserProperties, getUsers } from './GenericFunctions';
 
 export class MicrosoftEntra implements INodeType {
-	description: INodeTypeDescription = {
+	description: INodeTypeDescription = addDynamicCredentialsProperties({
 		displayName: 'Microsoft Entra ID',
 		name: 'microsoftEntra',
 		icon: {
@@ -63,7 +64,7 @@ export class MicrosoftEntra implements INodeType {
 			...userOperations,
 			...userFields,
 		],
-	};
+	});
 
 	methods = {
 		loadOptions: {

@@ -8,6 +8,7 @@ import type {
 	INodeTypeDescription,
 } from 'n8n-workflow';
 import { NodeConnectionTypes } from 'n8n-workflow';
+import { addDynamicCredentialsProperties } from '../../../utils/dynamic-credentials';
 
 import { accountFields, accountOperations } from './descriptions';
 import type { IField } from './GenericFunctions';
@@ -21,7 +22,7 @@ import {
 } from './GenericFunctions';
 
 export class MicrosoftDynamicsCrm implements INodeType {
-	description: INodeTypeDescription = {
+	description: INodeTypeDescription = addDynamicCredentialsProperties({
 		displayName: 'Microsoft Dynamics CRM',
 		name: 'microsoftDynamicsCrm',
 		icon: { light: 'file:microsoftDynamicsCrm.svg', dark: 'file:microsoftDynamicsCrm.dark.svg' },
@@ -58,7 +59,7 @@ export class MicrosoftDynamicsCrm implements INodeType {
 			...accountOperations,
 			...accountFields,
 		],
-	};
+	});
 
 	methods = {
 		loadOptions: {

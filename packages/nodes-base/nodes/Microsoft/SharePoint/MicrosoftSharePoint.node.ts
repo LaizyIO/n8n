@@ -1,11 +1,12 @@
 import type { INodeType, INodeTypeDescription } from 'n8n-workflow';
 import { NodeConnectionTypes } from 'n8n-workflow';
+import { addDynamicCredentialsProperties } from '../../../utils/dynamic-credentials';
 
 import { file, item, list } from './descriptions';
 import { listSearch, resourceMapping } from './methods';
 
 export class MicrosoftSharePoint implements INodeType {
-	description: INodeTypeDescription = {
+	description: INodeTypeDescription = addDynamicCredentialsProperties({
 		displayName: 'Microsoft SharePoint',
 		name: 'microsoftSharePoint',
 		icon: {
@@ -59,7 +60,7 @@ export class MicrosoftSharePoint implements INodeType {
 			...item.description,
 			...list.description,
 		],
-	};
+	});
 
 	methods = {
 		listSearch,
