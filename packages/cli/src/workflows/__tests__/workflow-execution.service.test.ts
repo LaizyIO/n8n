@@ -1,4 +1,5 @@
-import type { User } from '@n8n/db';
+import type { GlobalConfig } from '@n8n/config';
+import type { Project, User, WorkflowEntity, WorkflowRepository } from '@n8n/db';
 import { mock } from 'jest-mock-extended';
 import {
 	NodeConnectionTypes,
@@ -7,8 +8,11 @@ import {
 	type INodeType,
 	type IWorkflowBase,
 	type IWorkflowExecuteAdditionalData,
+	type ExecutionError,
+	createRunExecutionData,
 } from 'n8n-workflow';
 
+import type { IWorkflowErrorData } from '@/interfaces';
 import type { NodeTypes } from '@/node-types';
 import * as WorkflowExecuteAdditionalData from '@/workflow-execute-additional-data';
 import type { WorkflowRunner } from '@/workflow-runner';
@@ -90,7 +94,11 @@ describe('WorkflowExecutionService', () => {
 	describe('runWorkflow()', () => {
 		test('should call `WorkflowRunner.run()`', async () => {
 			const node = mock<INode>();
-			const workflow = mock<IWorkflowBase>({ active: true, nodes: [node] });
+			const workflow = mock<IWorkflowBase>({
+				active: true,
+				activeVersionId: 'some-version-id',
+				nodes: [node],
+			});
 
 			workflowRunner.run.mockResolvedValue('fake-execution-id');
 
@@ -101,6 +109,10 @@ describe('WorkflowExecutionService', () => {
 	});
 
 	describe('executeManually()', () => {
+		beforeEach(() => {
+			workflowRunner.run.mockClear();
+		});
+
 		test('should call `WorkflowRunner.run()` with correct parameters with default partial execution logic', async () => {
 			const executionId = 'fake-execution-id';
 			const userId = 'user-id';
@@ -123,7 +135,6 @@ describe('WorkflowExecutionService', () => {
 				pushRef: undefined,
 				workflowData: runPayload.workflowData,
 				userId,
-				partialExecutionVersion: 1,
 				startNodes: runPayload.startNodes,
 				dirtyNodeNames: runPayload.dirtyNodeNames,
 				triggerToStartFrom: runPayload.triggerToStartFrom,
@@ -159,7 +170,6 @@ describe('WorkflowExecutionService', () => {
 				pushRef: undefined,
 				workflowData: runPayload.workflowData,
 				userId,
-				partialExecutionVersion: 1,
 				startNodes: runPayload.startNodes,
 				dirtyNodeNames: runPayload.dirtyNodeNames,
 				triggerToStartFrom: runPayload.triggerToStartFrom,
@@ -210,7 +220,6 @@ describe('WorkflowExecutionService', () => {
 					pushRef: undefined,
 					workflowData: runPayload.workflowData,
 					userId,
-					partialExecutionVersion: 1,
 					startNodes: [
 						{
 							name: triggerNode.name,
@@ -253,6 +262,7 @@ describe('WorkflowExecutionService', () => {
 					id: 'abc',
 					name: 'test',
 					active: false,
+					activeVersionId: null,
 					isArchived: false,
 					pinData: {
 						[pinnedTrigger.name]: [{ json: {} }],
@@ -277,7 +287,6 @@ describe('WorkflowExecutionService', () => {
 				pushRef: undefined,
 				workflowData: runPayload.workflowData,
 				userId,
-				partialExecutionVersion: 1,
 				startNodes: [
 					{
 						// Start from pinned trigger
@@ -321,6 +330,7 @@ describe('WorkflowExecutionService', () => {
 					id: 'abc',
 					name: 'test',
 					active: false,
+					activeVersionId: null,
 					isArchived: false,
 					pinData: {
 						[pinnedTrigger.name]: [{ json: {} }],
@@ -348,13 +358,44 @@ describe('WorkflowExecutionService', () => {
 				pushRef: undefined,
 				workflowData: runPayload.workflowData,
 				userId,
-				partialExecutionVersion: 1,
 				// ignore pinned trigger
 				startNodes: [],
 				dirtyNodeNames: runPayload.dirtyNodeNames,
 				// pass unexecuted trigger to start from
 				triggerToStartFrom: runPayload.triggerToStartFrom,
 			});
+			expect(result).toEqual({ executionId });
+		});
+
+		test('should force current version for manual execution even if workflow has active version', async () => {
+			const executionId = 'fake-execution-id';
+			const userId = 'user-id';
+			const user = mock<User>({ id: userId });
+			const runPayload: WorkflowRequest.ManualRunPayload = {
+				workflowData: {
+					id: 'workflow-id',
+					name: 'Test Workflow',
+					active: true,
+					activeVersionId: 'version-123',
+					isArchived: false,
+					nodes: [],
+					connections: {},
+					createdAt: new Date(),
+					updatedAt: new Date(),
+				},
+				startNodes: [],
+				destinationNode: undefined,
+			};
+
+			workflowRunner.run.mockResolvedValue(executionId);
+
+			const result = await workflowExecutionService.executeManually(runPayload, user);
+
+			expect(workflowRunner.run).toHaveBeenCalledTimes(1);
+			const callArgs = workflowRunner.run.mock.calls[0][0];
+			expect(callArgs.workflowData.active).toBe(false);
+			expect(callArgs.workflowData.activeVersionId).toBe(null);
+			expect(callArgs.executionMode).toBe('manual');
 			expect(result).toEqual({ executionId });
 		});
 	});
@@ -455,11 +496,14 @@ describe('WorkflowExecutionService', () => {
 				const originalEnv = process.env;
 				process.env.OFFLOAD_MANUAL_EXECUTIONS_TO_WORKERS = 'true';
 
-				const configMock = { getEnv: jest.fn() };
-				configMock.getEnv.mockReturnValue('queue');
-
 				const workflowRunnerMock = mock<WorkflowRunner>();
 				workflowRunnerMock.run.mockResolvedValue('fake-execution-id');
+
+				const globalConfigMock = mock<GlobalConfig>({
+					executions: {
+						mode: 'queue',
+					},
+				});
 
 				const service = new WorkflowExecutionService(
 					mock(),
@@ -469,7 +513,7 @@ describe('WorkflowExecutionService', () => {
 					nodeTypes,
 					mock(),
 					workflowRunnerMock,
-					mock(),
+					globalConfigMock,
 					mock(),
 					mock(),
 				);
@@ -487,6 +531,212 @@ describe('WorkflowExecutionService', () => {
 				expect(callArgs.executionData?.resultData?.runData).toBeUndefined();
 
 				process.env = originalEnv;
+			});
+
+			test('when receiving `runData`, should preserve it in `executionData` for partial execution', async () => {
+				const originalEnv = process.env;
+				process.env.OFFLOAD_MANUAL_EXECUTIONS_TO_WORKERS = 'true';
+
+				const workflowRunnerMock = mock<WorkflowRunner>();
+				workflowRunnerMock.run.mockResolvedValue('fake-execution-id');
+
+				const globalConfigMock = mock<GlobalConfig>({
+					executions: {
+						mode: 'queue',
+					},
+				});
+
+				const service = new WorkflowExecutionService(
+					mock(),
+					mock(),
+					mock(),
+					mock(),
+					nodeTypes,
+					mock(),
+					workflowRunnerMock,
+					globalConfigMock,
+					mock(),
+					mock(),
+				);
+
+				const runData = {
+					Node1: [
+						{
+							startTime: 123,
+							executionTime: 456,
+							source: [],
+							executionIndex: 0,
+						},
+					],
+				};
+
+				await service.executeManually(
+					{
+						workflowData: mock<IWorkflowBase>({ nodes: [] }),
+						startNodes: [],
+						runData,
+					},
+					mock<User>({ id: 'user-id' }),
+				);
+
+				const callArgs = workflowRunnerMock.run.mock.calls[0][0];
+				expect(callArgs.executionData?.resultData?.runData).toEqual(runData);
+
+				process.env = originalEnv;
+			});
+
+			test('should not initialize nested `executionData.executionData` to avoid treating it as resumed execution', async () => {
+				const originalEnv = process.env;
+				process.env.OFFLOAD_MANUAL_EXECUTIONS_TO_WORKERS = 'true';
+
+				const workflowRunnerMock = mock<WorkflowRunner>();
+				workflowRunnerMock.run.mockResolvedValue('fake-execution-id');
+
+				const globalConfigMock = mock<GlobalConfig>({
+					executions: {
+						mode: 'queue',
+					},
+				});
+
+				const service = new WorkflowExecutionService(
+					mock(),
+					mock(),
+					mock(),
+					mock(),
+					nodeTypes,
+					mock(),
+					workflowRunnerMock,
+					globalConfigMock,
+					mock(),
+					mock(),
+				);
+
+				await service.executeManually(
+					{
+						workflowData: mock<IWorkflowBase>({ nodes: [] }),
+						startNodes: [],
+						runData: undefined,
+					},
+					mock<User>({ id: 'user-id' }),
+				);
+
+				const callArgs = workflowRunnerMock.run.mock.calls[0][0];
+				// Should have executionData at top level with startData and manualData
+				expect(callArgs.executionData).toBeDefined();
+				expect(callArgs.executionData?.startData).toBeDefined();
+				expect(callArgs.executionData?.manualData).toBeDefined();
+				// But nested executionData.executionData should be undefined
+				expect(callArgs.executionData?.executionData).toBeUndefined();
+
+				process.env = originalEnv;
+			});
+		});
+	});
+
+	describe('executeErrorWorkflow()', () => {
+		test('should call `WorkflowRunner.run()` with correct parameters', async () => {
+			const workflowErrorData: IWorkflowErrorData = {
+				workflow: { id: 'workflow-id', name: 'Test Workflow' },
+				execution: {
+					id: 'execution-id',
+					mode: 'manual',
+					error: new Error('Test error') as ExecutionError,
+					lastNodeExecuted: 'Node with error',
+				},
+			};
+
+			const workflowRunnerMock = mock<WorkflowRunner>();
+			workflowRunnerMock.run.mockResolvedValue('fake-execution-id');
+
+			const errorTriggerType = 'n8n-nodes-base.errorTrigger';
+			const globalConfig = mock<GlobalConfig>({
+				nodes: {
+					errorTriggerType,
+				},
+			});
+
+			const errorTriggerNode: INode = {
+				id: 'error-trigger-node-id',
+				name: 'Error Trigger',
+				type: errorTriggerType,
+				typeVersion: 1,
+				position: [0, 0],
+				parameters: {},
+			};
+
+			const errorWorkflow = mock<WorkflowEntity>({
+				id: 'error-workflow-id',
+				name: 'Error Workflow',
+				active: false,
+				activeVersionId: null,
+				isArchived: false,
+				pinData: {},
+				nodes: [errorTriggerNode],
+				connections: {},
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			});
+
+			const workflowRepositoryMock = mock<WorkflowRepository>();
+			workflowRepositoryMock.findOneBy.mockResolvedValue(errorWorkflow);
+
+			const service = new WorkflowExecutionService(
+				mock(),
+				mock(),
+				mock(),
+				workflowRepositoryMock,
+				nodeTypes,
+				mock(),
+				workflowRunnerMock,
+				globalConfig,
+				mock(),
+				mock(),
+			);
+
+			await service.executeErrorWorkflow(
+				'error-workflow-id',
+				workflowErrorData,
+				mock<Project>({ id: 'project-id' }),
+			);
+
+			expect(workflowRunnerMock.run).toHaveBeenCalledTimes(1);
+			expect(workflowRunnerMock.run).toHaveBeenCalledWith({
+				executionMode: 'error',
+				executionData: createRunExecutionData({
+					executionData: {
+						contextData: {},
+						metadata: {},
+						nodeExecutionStack: [
+							{
+								node: errorTriggerNode,
+								data: {
+									main: [
+										[
+											{
+												json: workflowErrorData,
+											},
+										],
+									],
+								},
+								source: null,
+								metadata: {
+									parentExecution: {
+										executionId: 'execution-id',
+										workflowId: 'workflow-id',
+									},
+								},
+							},
+						],
+						waitingExecution: {},
+						waitingExecutionSource: {},
+					},
+					resultData: {
+						runData: {},
+					},
+					startData: {},
+				}),
+				workflowData: errorWorkflow,
+				projectId: 'project-id',
 			});
 		});
 	});

@@ -1,7 +1,10 @@
-import { escapeRegExp, mapValues, isEqual, cloneDeep } from 'lodash';
+import cloneDeep from 'lodash/cloneDeep';
+import escapeRegExp from 'lodash/escapeRegExp';
+import isEqual from 'lodash/isEqual';
+import mapValues from 'lodash/mapValues';
 
 import { OperationalError } from './errors';
-import type { INode, NodeParameterValueType } from './interfaces';
+import type { INode, INodeParameters, NodeParameterValueType } from './interfaces';
 
 class LazyRegExp {
 	private regExp?: RegExp;
@@ -42,6 +45,8 @@ const ITEM_TO_DATA_ACCESSORS = [
 	/^itemMatching\(\d+\)/, // We only support trivial itemMatching arguments
 	/^item/,
 ];
+
+const SPLIT_OUT_NODE_TYPE = 'n8n-nodes-base.splitOut';
 
 // These we safely can convert to a normal argument
 const ITEM_ACCESSORS = ['params', 'isExecuted'];
@@ -176,7 +181,6 @@ function parseExpressionMapping(
 		for (; partsIdx < parts.length; ++partsIdx) {
 			if (!DOT_REFERENCEABLE_JS_VARIABLE.test(parts[partsIdx])) break;
 		}
-
 		return {
 			nodeNameInExpression: null,
 			originalExpression: `${exprStart}.${parts.slice(0, partsIdx + 1).join('.')}`, // $json.valid.until, but not ['x'] after
@@ -205,7 +209,7 @@ function parseExpressionMapping(
 			return {
 				nodeNameInExpression,
 				originalExpression: `${exprStart}.${parts[0]}`, // $('abc').first()
-				replacementPrefix: `$('${startNodeName}').${accessorPrefix}`, //  $('Start').first()
+				replacementPrefix: `$('${startNodeName}').${accessorPrefix}.json`, //  $('Start').first().json
 				replacementName: `${nodeNamePlainJs}_${convertDataAccessorName(originalName)}`, // nodeName_firstItem, nodeName_itemMatching_20
 			};
 		} else {
@@ -264,7 +268,9 @@ function extractExpressionCandidate(expression: string, startIndex: number, endI
 
 	// Note that by choosing match 0 we use `itemMatching` matches over `item`
 	// matches by relying on the order in ITEM_TO_DATA_ACCESSORS
-	const after_accessor_idx = endIndex + (firstPartException[0]?.[0].length ?? -1) + 1;
+	let after_accessor_idx = endIndex + (firstPartException[0]?.[0].length ?? -1);
+	// skip `.` to continue, but halt before other symbols like `[` in `all()[0]`
+	if (expression[after_accessor_idx + 1] === '.') after_accessor_idx += 1;
 	const after_accessor = expression.slice(after_accessor_idx);
 	const firstInvalidCharMatch = INVALID_JS_DOT_PATH.exec(after_accessor);
 
@@ -294,6 +300,7 @@ function parseCandidateMatch(
 
 	const candidate = extractExpressionCandidate(expression, startIndex, endIndex);
 	if (candidate === null) return null;
+
 	return parseExpressionMapping(
 		candidate,
 		nodeNameInExpression,
@@ -304,8 +311,12 @@ function parseCandidateMatch(
 
 // Handle matches of form `$json.path.to.value`, which is necessary for the selection input node
 function parse$jsonMatch(match: RegExpExecArray, expression: string, startNodeName: string) {
-	const candidate = extractExpressionCandidate(expression, match.index, match[0].length);
-	if (candidate === null) return;
+	const candidate = extractExpressionCandidate(
+		expression,
+		match.index,
+		match.index + match[0].length + 1,
+	);
+	if (candidate === null) return null;
 	return parseExpressionMapping(candidate, null, null, startNodeName);
 }
 
@@ -439,6 +450,10 @@ function applyExtractMappingToNode(node: INode, parameterExtractMapping: Paramet
 			return parameters;
 		}
 
+		if (Array.isArray(parameters) && typeof mapping === 'object' && !Array.isArray(mapping)) {
+			return parameters.map((x, i) => applyMapping(x, mapping[i]) as INodeParameters);
+		}
+
 		return mapValues(parameters, (v, k) => applyMapping(v, mapping[k])) as NodeParameterValueType;
 	};
 
@@ -477,17 +492,17 @@ export function extractReferencesInNodeExpressions(
 	subGraph: INode[],
 	nodeNames: string[],
 	insertedStartName: string,
-	graphInputNodeName?: string,
+	graphInputNodeNames?: string[],
 ) {
+	const [start] = graphInputNodeNames ?? [];
 	////
 	// STEP 1 - Validate input invariants
 	////
-	if (nodeNames.includes(insertedStartName))
-		throw new OperationalError(
-			`StartNodeName ${insertedStartName} already exists in nodeNames: ${JSON.stringify(nodeNames)}`,
-		);
-
 	const subGraphNames = subGraph.map((x) => x.name);
+	if (subGraphNames.includes(insertedStartName))
+		throw new OperationalError(
+			`StartNodeName ${insertedStartName} already exists in nodeNames: ${JSON.stringify(subGraphNames)}`,
+		);
 
 	if (subGraphNames.some((x) => !nodeNames.includes(x))) {
 		throw new OperationalError(
@@ -516,9 +531,12 @@ export function extractReferencesInNodeExpressions(
 	////
 
 	// This map is used to change the actual expressions once resolved
-	const recMapByNode = new Map<string, ParameterExtractMapping>();
+	// The value represents fields in the actual parameters object which require change
+	const parameterTreeMappingByNode = new Map<string, ParameterExtractMapping>();
 	// This is used to track all candidates for change, necessary for deduplication
 	const allData = [];
+	// Additional mappings that should contribute to sub-workflow inputs (e.g. Split Out 'fieldToSplitOut')
+	const extraVariableCandidates: ExpressionMapping[] = [];
 
 	for (const node of subGraph) {
 		const [parameterMapping, allMappings] = applyParameterMapping(node.parameters, (s) =>
@@ -527,11 +545,45 @@ export function extractReferencesInNodeExpressions(
 				nodeRegexps,
 				nodeNames,
 				insertedStartName,
-				node.name === graphInputNodeName,
+				graphInputNodeNames?.includes(node.name) ?? false,
 			),
 		);
-		recMapByNode.set(node.name, parameterMapping);
+		parameterTreeMappingByNode.set(node.name, parameterMapping);
 		allData.push(...allMappings);
+
+		if (node.name === start && node.type === SPLIT_OUT_NODE_TYPE) {
+			const raw = node.parameters?.fieldToSplitOut;
+			if (typeof raw === 'string' && raw.trim() !== '') {
+				const trimmed = raw.trim();
+				const isExpression = trimmed.startsWith('=');
+
+				// Expressions in Split Out 'fieldToSplitOut' parameters are not supported,
+				// as they define the fields to split out only at execution time.
+				if (isExpression) {
+					throw new OperationalError(
+						`Extracting sub-workflow from Split Out node with 'fieldToSplitOut' parameter having expression "${trimmed}" is not supported.`,
+					);
+				}
+
+				// Parameter value is a CSV of fields to split out.
+				// Create synthetic $json expressions for each field
+				const fields = isExpression
+					? [trimmed]
+					: trimmed.split(',').map((field) => `={{$json.${field.trim()}}}`);
+
+				for (const expression of fields) {
+					const mappingsFromField = parseReferencingExpressions(
+						expression,
+						nodeRegexps,
+						nodeNames,
+						insertedStartName,
+						graphInputNodeNames?.includes(node.name) ?? false,
+					);
+
+					extraVariableCandidates.push(...mappingsFromField);
+				}
+			}
+		}
 	}
 
 	////
@@ -539,7 +591,7 @@ export function extractReferencesInNodeExpressions(
 	////
 
 	const subGraphNodeNames = new Set(subGraphNames);
-	const dataFromOutsideSubgraph = allData.filter(
+	const dataFromOutsideSubgraph = [...allData, ...extraVariableCandidates].filter(
 		// `nodeNameInExpression` being absent implies direct access via `$json` or `$binary`
 		(x) => !x.nodeNameInExpression || !subGraphNodeNames.has(x.nodeNameInExpression),
 	);
@@ -560,8 +612,8 @@ export function extractReferencesInNodeExpressions(
 		return triggerArgumentMap.get(key);
 	};
 
-	for (const [key, value] of recMapByNode.entries()) {
-		recMapByNode.set(key, applyCanonicalMapping(value, getCanonicalData));
+	for (const [key, value] of parameterTreeMappingByNode.entries()) {
+		parameterTreeMappingByNode.set(key, applyCanonicalMapping(value, getCanonicalData));
 	}
 
 	const allUsedMappings = [];
@@ -569,10 +621,21 @@ export function extractReferencesInNodeExpressions(
 	for (const node of subGraph) {
 		const { result, usedMappings } = applyExtractMappingToNode(
 			cloneDeep(node),
-			recMapByNode.get(node.name),
+			parameterTreeMappingByNode.get(node.name),
 		);
 		allUsedMappings.push(...usedMappings);
 		output.push(result);
+	}
+
+	for (const candidate of extraVariableCandidates) {
+		const key = originalExpressionMap.get(candidate.originalExpression);
+		if (!key) continue;
+		const canonical = triggerArgumentMap.get(key);
+		if (!canonical) continue;
+
+		if (!allUsedMappings.some((u) => u.replacementName === canonical.replacementName)) {
+			allUsedMappings.push(canonical);
+		}
 	}
 
 	const variables = new Map(allUsedMappings.map((m) => [m.replacementName, m.originalExpression]));

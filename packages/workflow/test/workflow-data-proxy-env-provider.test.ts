@@ -1,5 +1,5 @@
-import { ExpressionError } from '@/errors/expression.error';
-import { createEnvProvider, createEnvProviderState } from '@/workflow-data-proxy-env-provider';
+import { ExpressionError } from '../src/errors/expression.error';
+import { createEnvProvider, createEnvProviderState } from '../src/workflow-data-proxy-env-provider';
 
 describe('createEnvProviderState', () => {
 	afterEach(() => {
@@ -54,10 +54,12 @@ describe('createEnvProvider', () => {
 	});
 
 	it('should throw ExpressionError when process is unavailable', () => {
+		vi.useFakeTimers({ now: new Date() });
+
 		const originalProcess = global.process;
-		// @ts-expect-error process is read-only
-		global.process = undefined;
 		try {
+			// @ts-expect-error process is read-only
+			global.process = undefined;
 			const proxy = createEnvProvider(1, 1, createEnvProviderState());
 
 			expect(() => proxy.someEnvVar).toThrowError(
@@ -68,20 +70,27 @@ describe('createEnvProvider', () => {
 			);
 		} finally {
 			global.process = originalProcess;
+			vi.useRealTimers();
 		}
 	});
 
 	it('should throw ExpressionError when env access is blocked', () => {
-		process.env.N8N_BLOCK_ENV_ACCESS_IN_NODE = 'true';
-		const proxy = createEnvProvider(1, 1, createEnvProviderState());
+		vi.useFakeTimers({ now: new Date() });
 
-		expect(() => proxy.someEnvVar).toThrowError(
-			new ExpressionError('access to env vars denied', {
-				causeDetailed:
-					'If you need access please contact the administrator to remove the environment variable ‘N8N_BLOCK_ENV_ACCESS_IN_NODE‘',
-				runIndex: 1,
-				itemIndex: 1,
-			}),
-		);
+		try {
+			process.env.N8N_BLOCK_ENV_ACCESS_IN_NODE = 'true';
+			const proxy = createEnvProvider(1, 1, createEnvProviderState());
+
+			expect(() => proxy.someEnvVar).toThrowError(
+				new ExpressionError('access to env vars denied', {
+					causeDetailed:
+						'If you need access please contact the administrator to remove the environment variable ‘N8N_BLOCK_ENV_ACCESS_IN_NODE‘',
+					runIndex: 1,
+					itemIndex: 1,
+				}),
+			);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 });

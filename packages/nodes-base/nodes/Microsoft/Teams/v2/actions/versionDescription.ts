@@ -7,6 +7,7 @@ import * as channelMessage from './channelMessage';
 import * as chatMessage from './chatMessage';
 import * as task from './task';
 import { sendAndWaitWebhooksDescription } from '../../../../../utils/sendAndWait/descriptions';
+import { SEND_AND_WAIT_WAITING_TOOLTIP } from '../../../../../utils/sendAndWait/utils';
 
 export const versionDescription: INodeTypeDescription = addDynamicCredentialsProperties({
 	displayName: 'Microsoft Teams',
@@ -27,6 +28,7 @@ export const versionDescription: INodeTypeDescription = addDynamicCredentialsPro
 			required: true,
 		},
 	],
+	waitingNodeTooltip: SEND_AND_WAIT_WAITING_TOOLTIP,
 	webhooks: sendAndWaitWebhooksDescription,
 	properties: [
 		{

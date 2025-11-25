@@ -84,6 +84,10 @@ class PostgresConfig {
 	@Env('DB_POSTGRESDB_CONNECTION_TIMEOUT')
 	connectionTimeoutMs: number = 20_000;
 
+	/** Postgres idle connection timeout (ms) */
+	@Env('DB_POSTGRESDB_IDLE_CONNECTION_TIMEOUT')
+	idleTimeoutMs: number = 30_000;
+
 	@Nested
 	ssl: PostgresSSLConfig;
 }
@@ -109,6 +113,10 @@ class MysqlConfig {
 	/** MySQL database user */
 	@Env('DB_MYSQLDB_USER')
 	user: string = 'root';
+
+	/** MySQL connection pool size */
+	@Env('DB_MYSQLDB_POOL_SIZE')
+	poolSize: number = 10;
 }
 
 @Config
@@ -157,6 +165,12 @@ export class DatabaseConfig {
 	/** Prefix for table names */
 	@Env('DB_TABLE_PREFIX')
 	tablePrefix: string = '';
+
+	/**
+	 * The interval in seconds to ping the database to check if the connection is still alive.
+	 */
+	@Env('DB_PING_INTERVAL_SECONDS')
+	pingIntervalSeconds: number = 2;
 
 	@Nested
 	logging: LoggingConfig;

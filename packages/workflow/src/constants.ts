@@ -8,7 +8,7 @@ export const WAIT_INDEFINITELY = new Date('3000-01-01T00:00:00.000Z');
 
 export const LOG_LEVELS = ['silent', 'error', 'warn', 'info', 'debug'] as const;
 
-export const CODE_LANGUAGES = ['javaScript', 'python'] as const;
+export const CODE_LANGUAGES = ['javaScript', 'python', 'json', 'html'] as const;
 export const CODE_EXECUTION_MODES = ['runOnceForAllItems', 'runOnceForEachItem'] as const;
 
 // Arbitrary value to represent an empty credential value
@@ -40,8 +40,14 @@ export const MERGE_NODE_TYPE = 'n8n-nodes-base.merge';
 export const AI_TRANSFORM_NODE_TYPE = 'n8n-nodes-base.aiTransform';
 export const FORM_NODE_TYPE = 'n8n-nodes-base.form';
 export const FORM_TRIGGER_NODE_TYPE = 'n8n-nodes-base.formTrigger';
-export const CHAT_TRIGGER_NODE_TYPE = '@n8n/n8n-nodes-langchain.chatTrigger';
 export const WAIT_NODE_TYPE = 'n8n-nodes-base.wait';
+export const RESPOND_TO_WEBHOOK_NODE_TYPE = 'n8n-nodes-base.respondToWebhook';
+export const HTML_NODE_TYPE = 'n8n-nodes-base.html';
+export const MAILGUN_NODE_TYPE = 'n8n-nodes-base.mailgun';
+export const POSTGRES_NODE_TYPE = 'n8n-nodes-base.postgres';
+export const MYSQL_NODE_TYPE = 'n8n-nodes-base.mySql';
+export const SCHEDULE_TRIGGER_NODE_TYPE = 'n8n-nodes-base.scheduleTrigger';
+export const JINA_AI_TOOL_NODE_TYPE = 'n8n-nodes-base.jinaAiTool';
 
 export const STARTING_NODE_TYPES = [
 	MANUAL_TRIGGER_NODE_TYPE,
@@ -49,6 +55,7 @@ export const STARTING_NODE_TYPES = [
 	ERROR_TRIGGER_NODE_TYPE,
 	START_NODE_TYPE,
 	EVALUATION_TRIGGER_NODE_TYPE,
+	FORM_TRIGGER_NODE_TYPE,
 ];
 
 export const SCRIPTING_NODE_TYPES = [
@@ -70,17 +77,30 @@ export const NODES_WITH_RENAMABLE_CONTENT = new Set([
 	FUNCTION_ITEM_NODE_TYPE,
 	AI_TRANSFORM_NODE_TYPE,
 ]);
+export const NODES_WITH_RENAMABLE_FORM_HTML_CONTENT = new Set([FORM_NODE_TYPE]);
+export const NODES_WITH_RENAMEABLE_TOPLEVEL_HTML_CONTENT = new Set([
+	MAILGUN_NODE_TYPE,
+	HTML_NODE_TYPE,
+]);
 
 //@n8n/n8n-nodes-langchain
 export const MANUAL_CHAT_TRIGGER_LANGCHAIN_NODE_TYPE = '@n8n/n8n-nodes-langchain.manualChatTrigger';
 export const AGENT_LANGCHAIN_NODE_TYPE = '@n8n/n8n-nodes-langchain.agent';
 export const CHAIN_LLM_LANGCHAIN_NODE_TYPE = '@n8n/n8n-nodes-langchain.chainLlm';
 export const OPENAI_LANGCHAIN_NODE_TYPE = '@n8n/n8n-nodes-langchain.openAi';
+export const OPENAI_CHAT_LANGCHAIN_NODE_TYPE = '@n8n/n8n-nodes-langchain.lmChatOpenAi';
 export const CHAIN_SUMMARIZATION_LANGCHAIN_NODE_TYPE =
 	'@n8n/n8n-nodes-langchain.chainSummarization';
+export const AGENT_TOOL_LANGCHAIN_NODE_TYPE = '@n8n/n8n-nodes-langchain.agentTool';
 export const CODE_TOOL_LANGCHAIN_NODE_TYPE = '@n8n/n8n-nodes-langchain.toolCode';
 export const WORKFLOW_TOOL_LANGCHAIN_NODE_TYPE = '@n8n/n8n-nodes-langchain.toolWorkflow';
 export const HTTP_REQUEST_TOOL_LANGCHAIN_NODE_TYPE = '@n8n/n8n-nodes-langchain.toolHttpRequest';
+export const CHAT_TRIGGER_NODE_TYPE = '@n8n/n8n-nodes-langchain.chatTrigger';
+export const RESPOND_TO_CHAT_NODE_TYPE = '@n8n/n8n-nodes-langchain.chat';
+export const MEMORY_MANAGER_NODE_TYPE = '@n8n/n8n-nodes-langchain.memoryManager';
+export const MEMORY_BUFFER_WINDOW_NODE_TYPE = '@n8n/n8n-nodes-langchain.memoryBufferWindow';
+export const GUARDRAILS_NODE_TYPE = '@n8n/n8n-nodes-langchain.guardrails';
+export const SEAR_XNG_TOOL_NODE_TYPE = '@n8n/n8n-nodes-langchain.toolSearXng';
 
 export const LANGCHAIN_CUSTOM_TOOLS = [
 	CODE_TOOL_LANGCHAIN_NODE_TYPE,
@@ -108,3 +128,5 @@ export const FROM_AI_AUTO_GENERATED_MARKER = '/*n8n-auto-generated-fromAI-overri
 export const PROJECT_ROOT = '0';
 
 export const WAITING_FORMS_EXECUTION_STATUS = 'n8n-execution-status';
+
+export const CHAT_WAIT_USER_REPLY = 'waitUserReply';
