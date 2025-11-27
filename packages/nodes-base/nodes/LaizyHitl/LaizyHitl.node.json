@@ -1,0 +1,17 @@
+{
+	"node": "n8n-nodes-base.laizyHitl",
+	"nodeVersion": "1.0",
+	"codexVersion": "1.0",
+	"categories": ["HITL"],
+	"subcategories": {
+		"HITL": ["Human in the Loop"]
+	},
+	"alias": ["laizy", "human", "form", "wait", "hitl", "approval", "callback", "pause", "interrupt"],
+	"resources": {
+		"primaryDocumentation": [
+			{
+				"url": "https://docs.laizy.io/integrations/hitl"
+			}
+		]
+	}
+}
