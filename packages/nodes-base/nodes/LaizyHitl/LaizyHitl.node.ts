@@ -29,8 +29,8 @@ export class LaizyHitl implements INodeType {
 			{
 				name: 'default',
 				httpMethod: 'GET',
-				responseMode: '={{$parameter["responseMode"]}}',
-				responseData: '={{$parameter["responseData"]}}',
+				responseMode: 'lastNode',
+				responseData: 'firstEntryJson',
 				path: '={{ $nodeId }}',
 				restartWebhook: true,
 				isFullPath: true,
@@ -38,8 +38,8 @@ export class LaizyHitl implements INodeType {
 			{
 				name: 'default',
 				httpMethod: 'POST',
-				responseMode: '={{$parameter["responseMode"]}}',
-				responseData: '={{$parameter["responseData"]}}',
+				responseMode: 'lastNode',
+				responseData: 'firstEntryJson',
 				path: '={{ $nodeId }}',
 				restartWebhook: true,
 				isFullPath: true,
@@ -78,54 +78,6 @@ export class LaizyHitl implements INodeType {
 					},
 				],
 				default: SEND_AND_WAIT_OPERATION,
-			},
-			{
-				displayName: 'Respond',
-				name: 'responseMode',
-				type: 'options',
-				options: [
-					{
-						name: 'Immediately (Redis Only)',
-						value: 'onReceived',
-						description: 'Respond immediately with confirmation, use Redis pub/sub for data',
-					},
-					{
-						name: 'When Workflow Finishes',
-						value: 'lastNode',
-						description: 'Wait for workflow to finish, return result in HTTP response',
-					},
-				],
-				default: 'onReceived',
-				description: 'How to respond to the webhook HTTP request',
-			},
-			{
-				displayName: 'Response Data',
-				name: 'responseData',
-				type: 'options',
-				displayOptions: {
-					show: {
-						responseMode: ['lastNode'],
-					},
-				},
-				options: [
-					{
-						name: 'First Entry JSON',
-						value: 'firstEntryJson',
-						description: 'Return JSON data of first workflow result',
-					},
-					{
-						name: 'All Entries',
-						value: 'allEntries',
-						description: 'Return all workflow results as array',
-					},
-					{
-						name: 'HITL Response Only',
-						value: 'hitlOnly',
-						description: 'Return only the HITL response data',
-					},
-				],
-				default: 'firstEntryJson',
-				description: 'What data to return in HTTP response',
 			},
 			...sendAndWaitOperation.description,
 		],
