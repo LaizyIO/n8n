@@ -29,8 +29,9 @@ export class LaizyHitl implements INodeType {
 			{
 				name: 'default',
 				httpMethod: 'GET',
-				responseMode: 'lastNode',
-				responseData: 'firstEntryJson',
+				responseMode: '={{$parameter["responseMode"]}}',
+				responseData: '={{$parameter["responseData"]}}',
+				responseBinaryPropertyName: '={{$parameter["responseBinaryPropertyName"]}}',
 				path: '={{ $nodeId }}',
 				restartWebhook: true,
 				isFullPath: true,
@@ -38,8 +39,9 @@ export class LaizyHitl implements INodeType {
 			{
 				name: 'default',
 				httpMethod: 'POST',
-				responseMode: 'lastNode',
-				responseData: 'firstEntryJson',
+				responseMode: '={{$parameter["responseMode"]}}',
+				responseData: '={{$parameter["responseData"]}}',
+				responseBinaryPropertyName: '={{$parameter["responseBinaryPropertyName"]}}',
 				path: '={{ $nodeId }}',
 				restartWebhook: true,
 				isFullPath: true,
@@ -78,6 +80,72 @@ export class LaizyHitl implements INodeType {
 					},
 				],
 				default: SEND_AND_WAIT_OPERATION,
+			},
+			{
+				displayName: 'Respond',
+				name: 'responseMode',
+				type: 'options',
+				options: [
+					{
+						name: 'When Workflow Finishes',
+						value: 'lastNode',
+						description: 'Wait for workflow to finish, return result in HTTP response',
+					},
+					{
+						name: "Using 'Respond to Webhook' Node",
+						value: 'responseNode',
+						description: 'Response defined in that node',
+					},
+				],
+				default: 'onReceived',
+				description: 'How to respond to the webhook HTTP request',
+			},
+			{
+				displayName: 'Response Data',
+				name: 'responseData',
+				type: 'options',
+				displayOptions: {
+					show: {
+						responseMode: ['lastNode'],
+					},
+				},
+				options: [
+					{
+						name: 'First Entry JSON',
+						value: 'firstEntryJson',
+						description: 'Return JSON data of first workflow result',
+					},
+					{
+						name: 'First Entry Binary',
+						value: 'firstEntryBinary',
+						description: 'Return binary file from first workflow result',
+					},
+					{
+						name: 'All Entries',
+						value: 'allEntries',
+						description: 'Return all workflow results as array',
+					},
+					{
+						name: 'HITL Response Only',
+						value: 'hitlOnly',
+						description: 'Return only the HITL response data',
+					},
+				],
+				default: 'firstEntryJson',
+				description: 'What data to return in HTTP response',
+			},
+			{
+				displayName: 'Property Name',
+				name: 'responseBinaryPropertyName',
+				type: 'string',
+				required: true,
+				default: 'data',
+				displayOptions: {
+					show: {
+						responseData: ['firstEntryBinary'],
+					},
+				},
+				description: 'Name of the binary property to return',
 			},
 			...sendAndWaitOperation.description,
 		],
