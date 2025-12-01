@@ -91,11 +91,6 @@ export class LaizyHitl implements INodeType {
 						value: 'lastNode',
 						description: 'Wait for workflow to finish, return result in HTTP response',
 					},
-					{
-						name: "Using 'Respond to Webhook' Node",
-						value: 'responseNode',
-						description: 'Response defined in that node',
-					},
 				],
 				default: 'onReceived',
 				description: 'How to respond to the webhook HTTP request',
@@ -124,11 +119,6 @@ export class LaizyHitl implements INodeType {
 						name: 'All Entries',
 						value: 'allEntries',
 						description: 'Return all workflow results as array',
-					},
-					{
-						name: 'HITL Response Only',
-						value: 'hitlOnly',
-						description: 'Return only the HITL response data',
 					},
 				],
 				default: 'firstEntryJson',
