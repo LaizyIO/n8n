@@ -69,7 +69,7 @@ export class ManualExecutionService {
 			let waitingExecution: IWaitingForExecution = {};
 			let waitingExecutionSource: IWaitingForExecutionSource = {};
 
-			if (data.destinationNode !== data.triggerToStartFrom.name) {
+			if (data.destinationNode?.nodeName !== data.triggerToStartFrom.name) {
 				const recreatedStack = recreateNodeExecutionStack(
 					filterDisabledNodes(DirectedGraph.fromWorkflow(workflow)),
 					new Set(startNodes),
@@ -118,11 +118,13 @@ export class ManualExecutionService {
 
 			const startNode = this.getExecutionStartNode(data, workflow);
 
+			const additionalRunFilterNodes: string[] = [];
+
 			if (data.destinationNode) {
-				const destinationNode = workflow.getNode(data.destinationNode);
+				const destinationNode = workflow.getNode(data.destinationNode.nodeName);
 				a.ok(
 					destinationNode,
-					`Could not find a node named "${data.destinationNode}" in the workflow.`,
+					`Could not find a node named "${data.destinationNode.nodeName}" in the workflow.`,
 				);
 
 				const destinationNodeType = workflow.nodeTypes.getByNameAndVersion(
@@ -147,20 +149,27 @@ export class ManualExecutionService {
 						data.executionData.startData.originalDestinationNode = data.destinationNode;
 					}
 					// Set destination to Tool Executor
-					data.destinationNode = TOOL_EXECUTOR_NODE_NAME;
+					// TODO(CAT-1265): Verify that this works as expected with inclusive mode.
+					data.destinationNode = { nodeName: TOOL_EXECUTOR_NODE_NAME, mode: 'inclusive' };
+					// One manual execution may run multiple tools, if the tool is connected through HITL node
+					// Allow execution by adding to runFilter
+					const connectedTools = workflow.getParentNodes(TOOL_EXECUTOR_NODE_NAME, 'ALL_NON_MAIN');
+					for (const connectedTool of connectedTools) {
+						additionalRunFilterNodes.push(connectedTool);
+					}
 				}
 			}
 
 			// Can execute without webhook so go on
 			const workflowExecute = new WorkflowExecute(additionalData, data.executionMode);
-
-			return workflowExecute.run(
+			return workflowExecute.run({
 				workflow,
 				startNode,
-				data.destinationNode,
-				data.pinData,
-				data.triggerToStartFrom,
-			);
+				destinationNode: data.destinationNode,
+				pinData: data.pinData,
+				triggerToStartFrom: data.triggerToStartFrom,
+				additionalRunFilterNodes,
+			});
 		} else {
 			a.ok(
 				data.destinationNode,

@@ -1,6 +1,7 @@
 import type { IRunExecutionData, IWorkflowBase, NodeExecutionSchema } from 'n8n-workflow';
 import { z } from 'zod';
-import { Z } from 'zod-class';
+
+import { Z } from '../../zod-class';
 
 export interface ExpressionValue {
 	expression: string;
@@ -10,9 +11,11 @@ export interface ExpressionValue {
 
 export class AiBuilderChatRequestDto extends Z.class({
 	payload: z.object({
+		id: z.string(),
 		role: z.literal('user'),
 		type: z.literal('message'),
 		text: z.string(),
+		versionId: z.string().optional(),
 		workflowContext: z.object({
 			currentWorkflow: z
 				.custom<Partial<IWorkflowBase>>((val: Partial<IWorkflowBase>) => {
@@ -57,5 +60,10 @@ export class AiBuilderChatRequestDto extends Z.class({
 				})
 				.optional(),
 		}),
+		featureFlags: z
+			.object({
+				templateExamples: z.boolean().optional(),
+			})
+			.optional(),
 	}),
 }) {}

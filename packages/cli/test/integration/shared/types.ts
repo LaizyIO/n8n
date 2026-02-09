@@ -44,11 +44,20 @@ type EndpointGroup =
 	| 'folder'
 	| 'insights'
 	| 'module-settings'
+	| 'security-settings'
 	| 'data-table'
 	| 'third-party-licenses'
 	| 'mcp';
 
-type ModuleName = 'insights' | 'external-secrets' | 'community-packages' | 'data-table' | 'mcp';
+type ModuleName =
+	| 'insights'
+	| 'external-secrets'
+	| 'community-packages'
+	| 'data-table'
+	| 'mcp'
+	| 'dynamic-credentials'
+	| 'log-streaming'
+	| 'ldap';
 
 export interface SetupProps {
 	endpointGroups?: EndpointGroup[];

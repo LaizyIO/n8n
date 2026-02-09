@@ -4,10 +4,11 @@ import { LICENSE_FEATURES } from '@n8n/constants';
 import { ExecutionRepository, SettingsRepository } from '@n8n/db';
 import { Command } from '@n8n/decorators';
 import { Container } from '@n8n/di';
+import { McpServer } from '@n8n/n8n-nodes-langchain/mcp/core';
 import glob from 'fast-glob';
 import { createReadStream, createWriteStream, existsSync } from 'fs';
 import { mkdir } from 'fs/promises';
-import { jsonParse, randomString, type IWorkflowExecutionDataProcess } from 'n8n-workflow';
+import { jsonParse, type IWorkflowExecutionDataProcess } from 'n8n-workflow';
 import path from 'path';
 import replaceStream from 'replacestream';
 import { pipeline } from 'stream/promises';
@@ -35,24 +36,20 @@ import { WorkflowRunner } from '@/workflow-runner';
 import { BaseCommand } from './base-command';
 import { CredentialsOverwrites } from '@/credentials-overwrites';
 import { DeprecationService } from '@/deprecation/deprecation.service';
+import { LoadNodesAndCredentials } from '@/load-nodes-and-credentials';
+import { WorkflowHistoryCompactionService } from '@/services/pruning/workflow-history-compaction.service';
 
 // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
 const open = require('open');
 
 const flagsSchema = z.object({
 	open: z.boolean().alias('o').describe('opens the UI automatically in browser').optional(),
-	tunnel: z
-		.boolean()
-		.describe(
-			'runs the webhooks via a hooks.n8n.cloud tunnel server. Use only for testing and development!',
-		)
-		.optional(),
 });
 
 @Command({
 	name: 'start',
 	description: 'Starts n8n. Makes Web-UI available and starts active workflows',
-	examples: ['', '--tunnel', '-o', '--tunnel -o'],
+	examples: ['', '-o'],
 	flagsSchema,
 })
 export class Start extends BaseCommand<z.infer<typeof flagsSchema>> {
@@ -253,6 +250,10 @@ export class Start extends BaseCommand<z.infer<typeof flagsSchema>> {
 
 		await this.moduleRegistry.initModules(this.instanceSettings.instanceType);
 
+		// Initialize auth handler registry after modules are loaded
+		const { AuthHandlerRegistry } = await import('@/auth/auth-handler.registry');
+		await Container.get(AuthHandlerRegistry).init();
+
 		if (this.instanceSettings.isMultiMain) {
 			// we instantiate `PrometheusMetricsService` early to register its multi-main event handlers
 			if (this.globalConfig.endpoints.metrics.enable) {
@@ -262,6 +263,9 @@ export class Start extends BaseCommand<z.infer<typeof flagsSchema>> {
 
 			Container.get(MultiMainSetup).registerEventHandlers();
 		}
+
+		await this.executionContextHookRegistry.init();
+		await Container.get(LoadNodesAndCredentials).postProcessLoaders();
 	}
 
 	async initOrchestration() {
@@ -270,8 +274,23 @@ export class Start extends BaseCommand<z.infer<typeof flagsSchema>> {
 		Container.get(PubSubRegistry).init();
 
 		const subscriber = Container.get(Subscriber);
-		await subscriber.subscribe('n8n.commands');
-		await subscriber.subscribe('n8n.worker-response');
+		await subscriber.subscribe(subscriber.getCommandChannel());
+		await subscriber.subscribe(subscriber.getWorkerResponseChannel());
+		await subscriber.subscribe(subscriber.getMcpRelayChannel());
+
+		// Set up MCP relay handler for multi-main queue mode
+		subscriber.setMcpRelayHandler((msg) => {
+			try {
+				const mcpServer = McpServer.instance(this.logger);
+				mcpServer.handleWorkerResponse(msg.sessionId, msg.messageId, msg.response);
+			} catch (error) {
+				this.logger.error('Failed to handle MCP relay message', {
+					sessionId: msg.sessionId,
+					messageId: msg.messageId,
+					error: error instanceof Error ? error.message : String(error),
+				});
+			}
+		});
 
 		if (this.instanceSettings.isMultiMain) {
 			await Container.get(MultiMainSetup).init();
@@ -299,46 +318,10 @@ export class Start extends BaseCommand<z.infer<typeof flagsSchema>> {
 			}
 		}
 
-		if (flags.tunnel) {
-			this.log('\nWaiting for tunnel ...');
-
-			let tunnelSubdomain =
-				process.env.N8N_TUNNEL_SUBDOMAIN ?? this.instanceSettings.tunnelSubdomain ?? '';
-
-			if (tunnelSubdomain === '') {
-				// When no tunnel subdomain did exist yet create a new random one
-				tunnelSubdomain = randomString(24).toLowerCase();
-
-				this.instanceSettings.update({ tunnelSubdomain });
-			}
-
-			const { default: localtunnel } = await import('@n8n/localtunnel');
-			const { port } = this.globalConfig;
-
-			const webhookTunnel = await localtunnel(port, {
-				host: 'https://hooks.n8n.cloud',
-				subdomain: tunnelSubdomain,
-			});
-
-			process.env.WEBHOOK_URL = `${webhookTunnel.url}/`;
-			this.log(`Tunnel URL: ${process.env.WEBHOOK_URL}\n`);
-			this.log(
-				'IMPORTANT! Do not share with anybody as it would give people access to your n8n instance!',
-			);
-		}
-
-		if (this.globalConfig.database.isLegacySqlite) {
-			// Employ lazy loading to avoid unnecessary imports in the CLI
-			// and to ensure that the legacy recovery service is only used when needed.
-			const { LegacySqliteExecutionRecoveryService } = await import(
-				'@/executions/legacy-sqlite-execution-recovery.service'
-			);
-			await Container.get(LegacySqliteExecutionRecoveryService).cleanupWorkflowExecutions();
-		}
-
 		await this.server.start();
 
 		Container.get(ExecutionsPruningService).init();
+		Container.get(WorkflowHistoryCompactionService).init();
 
 		if (this.globalConfig.executions.mode === 'regular') {
 			await this.runEnqueuedExecutions();
@@ -346,6 +329,8 @@ export class Start extends BaseCommand<z.infer<typeof flagsSchema>> {
 
 		// Start to get active workflows and run their triggers
 		await this.activeWorkflowManager.init();
+
+		Container.get(LoadNodesAndCredentials).releaseTypes();
 
 		const editorUrl = this.getEditorUrl();
 

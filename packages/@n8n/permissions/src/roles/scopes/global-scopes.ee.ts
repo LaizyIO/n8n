@@ -1,6 +1,7 @@
 import type { Scope } from '../../types.ee';
 
 export const GLOBAL_OWNER_SCOPES: Scope[] = [
+	'aiAssistant:manage',
 	'annotationTag:create',
 	'annotationTag:read',
 	'annotationTag:update',
@@ -34,7 +35,6 @@ export const GLOBAL_OWNER_SCOPES: Scope[] = [
 	'externalSecretsProvider:list',
 	'externalSecretsProvider:sync',
 	'externalSecret:list',
-	'externalSecret:use',
 	'ldap:manage',
 	'ldap:sync',
 	'license:manage',
@@ -42,6 +42,7 @@ export const GLOBAL_OWNER_SCOPES: Scope[] = [
 	'orchestration:read',
 	'saml:manage',
 	'securityAudit:generate',
+	'securitySettings:manage',
 	'sourceControl:pull',
 	'sourceControl:push',
 	'sourceControl:manage',
@@ -56,6 +57,7 @@ export const GLOBAL_OWNER_SCOPES: Scope[] = [
 	'user:delete',
 	'user:list',
 	'user:resetPassword',
+	'user:generateInviteLink',
 	'user:changeRole',
 	'user:enforceMfa',
 	'variable:create',
@@ -71,10 +73,12 @@ export const GLOBAL_OWNER_SCOPES: Scope[] = [
 	'workflow:create',
 	'workflow:read',
 	'workflow:update',
+	'workflow:publish',
 	'workflow:delete',
 	'workflow:list',
 	'workflow:share',
 	'workflow:execute',
+	'workflow:execute-chat',
 	'workflow:move',
 	'workersView:manage',
 	'project:list',
@@ -112,6 +116,12 @@ export const GLOBAL_OWNER_SCOPES: Scope[] = [
 	'chatHubAgent:delete',
 	'chatHubAgent:list',
 	'breakingChanges:list',
+	'apiKey:manage',
+	'credentialResolver:create',
+	'credentialResolver:read',
+	'credentialResolver:update',
+	'credentialResolver:delete',
+	'credentialResolver:list',
 ];
 
 export const GLOBAL_ADMIN_SCOPES = GLOBAL_OWNER_SCOPES.concat();
@@ -135,6 +145,16 @@ export const GLOBAL_MEMBER_SCOPES: Scope[] = [
 	'mcp:oauth',
 	'mcpApiKey:create',
 	'mcpApiKey:rotate',
+	'chatHub:message',
+	'chatHubAgent:create',
+	'chatHubAgent:read',
+	'chatHubAgent:update',
+	'chatHubAgent:delete',
+	'chatHubAgent:list',
+	'apiKey:manage',
+];
+
+export const GLOBAL_CHAT_USER_SCOPES: Scope[] = [
 	'chatHub:message',
 	'chatHubAgent:create',
 	'chatHubAgent:read',

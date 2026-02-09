@@ -1,3 +1,4 @@
+import type { Logger } from '@n8n/backend-common';
 import type {
 	CredentialsEntity,
 	CredentialsRepository,
@@ -10,17 +11,18 @@ import { GLOBAL_OWNER_ROLE, GLOBAL_MEMBER_ROLE } from '@n8n/db';
 import { mock } from 'jest-mock-extended';
 import { CREDENTIAL_ERRORS, CredentialDataError, Credentials, type ErrorReporter } from 'n8n-core';
 import { CREDENTIAL_EMPTY_VALUE, type ICredentialType } from 'n8n-workflow';
-import type { Logger } from '@n8n/backend-common';
 
 import { CREDENTIAL_BLANKING_VALUE } from '@/constants';
 import type { CredentialTypes } from '@/credential-types';
-import { CredentialsService } from '@/credentials/credentials.service';
 import type { CredentialsFinderService } from '@/credentials/credentials-finder.service';
+import { CredentialsService } from '@/credentials/credentials.service';
+import * as validation from '@/credentials/validation';
+import type { CredentialsHelper } from '@/credentials-helper';
+import type { ExternalHooks } from '@/external-hooks';
+import type { CredentialsTester } from '@/services/credentials-tester.service';
 import type { OwnershipService } from '@/services/ownership.service';
 import type { ProjectService } from '@/services/project.service.ee';
 import type { RoleService } from '@/services/role.service';
-import type { CredentialsTester } from '@/services/credentials-tester.service';
-import type { ExternalHooks } from '@/external-hooks';
 
 describe('CredentialsService', () => {
 	const credType = mock<ICredentialType>({
@@ -54,6 +56,7 @@ describe('CredentialsService', () => {
 	const roleService = mock<RoleService>();
 	const userRepository = mock<UserRepository>();
 	const credentialsFinderService = mock<CredentialsFinderService>();
+	const credentialsHelper = mock<CredentialsHelper>();
 
 	const service = new CredentialsService(
 		credentialsRepository,
@@ -69,6 +72,7 @@ describe('CredentialsService', () => {
 		roleService,
 		userRepository,
 		credentialsFinderService,
+		credentialsHelper,
 	);
 
 	beforeEach(() => jest.resetAllMocks());
@@ -1383,6 +1387,7 @@ describe('CredentialsService', () => {
 				id: 'project-1',
 			} as any);
 			projectService.getProjectRelationsForUser.mockResolvedValue([]);
+			credentialsHelper.getCredentialsProperties.mockReturnValue([]);
 		});
 
 		it('should allow owner to create global credential', async () => {
@@ -1474,6 +1479,316 @@ describe('CredentialsService', () => {
 
 			// ASSERT
 			expect(savedCredential.isGlobal).toBeUndefined();
+		});
+
+		it('should allow creating credential when required field has default value and is not provided', async () => {
+			// ARRANGE
+			// Mock credential properties with a required field that has a default value
+			credentialsHelper.getCredentialsProperties.mockReturnValue([
+				{
+					displayName: 'Host',
+					name: 'host',
+					type: 'string',
+					required: true,
+					default: 'https://generativelanguage.googleapis.com',
+				},
+				{
+					displayName: 'API Key',
+					name: 'apiKey',
+					type: 'string',
+					required: true,
+					default: '',
+				},
+			] as any);
+
+			// Payload without 'host' field - should use default value
+			const payload = {
+				name: 'Google Gemini Credential',
+				type: 'googlePalmApi',
+				data: { apiKey: 'test-api-key' }, // host is not provided
+				projectId: 'project-1',
+			};
+
+			// @ts-expect-error - Mocking manager for testing
+			credentialsRepository.manager = {
+				transaction: jest.fn().mockImplementation(async (callback) => {
+					const mockManager = {
+						save: jest.fn().mockImplementation(async (entity) => {
+							return { ...entity, id: 'new-cred-id' };
+						}),
+					};
+					return await callback(mockManager);
+				}),
+			};
+
+			// ACT & ASSERT
+			await expect(service.createUnmanagedCredential(payload, ownerUser)).resolves.toBeDefined();
+		});
+
+		it('should throw error when required field without default value is not provided', async () => {
+			// ARRANGE
+			credentialsHelper.getCredentialsProperties.mockReturnValue([
+				{
+					displayName: 'API Key',
+					name: 'apiKey',
+					type: 'string',
+					required: true,
+					default: '', // Empty default means no valid default
+				},
+			] as any);
+
+			const payload = {
+				name: 'Test Credential',
+				type: 'apiKey',
+				data: {}, // apiKey is missing
+				projectId: 'project-1',
+			};
+
+			// ACT & ASSERT
+			await expect(service.createUnmanagedCredential(payload, ownerUser)).rejects.toThrow(
+				'The field "apiKey" is mandatory for credentials of type "apiKey"',
+			);
+		});
+
+		it('should prevent use of external secret expression when required permission is missing', async () => {
+			credentialsHelper.getCredentialsProperties.mockReturnValue([]);
+			const payload = {
+				name: 'Test Credential',
+				type: 'apiKey',
+				data: {
+					apiKey: '$secrets.myApiKey',
+					url: 'https://api.example.com',
+				},
+				projectId: 'project-1',
+			};
+
+			await expect(service.createUnmanagedCredential(payload, memberUser)).rejects.toThrow(
+				'Lacking permissions to reference external secrets in credentials',
+			);
+		});
+	});
+
+	describe('createManagedCredential', () => {
+		const ownerUser = mock<User>({ id: 'owner-id', role: GLOBAL_OWNER_ROLE });
+
+		const credentialData = {
+			name: 'Managed Credential',
+			type: 'oauth2',
+			oauthProvider: 'google',
+			projectId: 'project-1',
+			data: { someData: 'value' },
+		};
+
+		beforeEach(async () => {
+			// Mock the save chain
+			roleService.addScopes.mockImplementation(
+				(c) =>
+					({
+						...c,
+						scopes: ['credential:read', 'credential:update'],
+					}) as any,
+			);
+			roleService.combineResourceScopes.mockReturnValue([
+				'credential:read',
+				'credential:update',
+			] as any);
+			sharedCredentialsRepository.findOne.mockResolvedValue({ role: 'credential:owner' } as any);
+			sharedCredentialsRepository.create.mockImplementation((data) => data as any);
+			sharedCredentialsRepository.find.mockResolvedValue([]);
+			externalHooks.run.mockResolvedValue();
+			projectService.getProjectWithScope.mockResolvedValue({
+				id: 'project-1',
+			} as any);
+			projectService.getProjectRelationsForUser.mockResolvedValue([]);
+		});
+
+		it('should throw BadRequestError when credential is missing required properties', async () => {
+			// ARRANGE
+			const payload = { ...credentialData };
+			credentialsHelper.getCredentialsProperties.mockReturnValue([
+				{
+					displayName: 'required prop',
+					name: 'requiredProp',
+					type: 'string',
+					required: true,
+					default: null,
+				},
+			]);
+
+			// ACT
+			await expect(service.createManagedCredential(payload, ownerUser)).rejects.toThrow(
+				'The field "requiredProp" is mandatory for credentials of type "oauth2"',
+			);
+		});
+
+		it('should create managed credential when all required properties are provided', async () => {
+			// ARRANGE
+			const payload = {
+				...credentialData,
+				data: {
+					requiredProp: 'some-value',
+				},
+			};
+			credentialsHelper.getCredentialsProperties.mockReturnValue([
+				{
+					displayName: 'required prop',
+					name: 'requiredProp',
+					type: 'string',
+					required: true,
+					default: null,
+				},
+			]);
+			credentialsRepository.create.mockImplementation((data) => ({ ...data }) as any);
+			// @ts-expect-error - Mocking manager for testing
+			credentialsRepository.manager = {
+				transaction: jest.fn().mockImplementation(async (callback) => {
+					const mockManager = {
+						save: jest.fn().mockImplementation(async (entity) => {
+							return { ...entity, id: 'new-managed-cred-id' };
+						}),
+					};
+					return await callback(mockManager);
+				}),
+			};
+
+			// ACT
+			const result = await service.createManagedCredential(payload, ownerUser);
+
+			// ASSERT
+			expect(result).toHaveProperty('id', 'new-managed-cred-id');
+			expect(result).toHaveProperty('name', 'Managed Credential');
+		});
+	});
+
+	describe('checkCredentialData', () => {
+		const ownerUser = mock<User>({ id: 'owner-id', role: GLOBAL_OWNER_ROLE });
+
+		beforeEach(() => {
+			jest.clearAllMocks();
+		});
+
+		it('should pass when all required fields are provided', () => {
+			credentialsHelper.getCredentialsProperties.mockReturnValue([
+				{
+					displayName: 'API Key',
+					name: 'apiKey',
+					type: 'string',
+					required: true,
+					default: '',
+				},
+				{
+					displayName: 'Domain',
+					name: 'domain',
+					type: 'string',
+					required: true,
+					default: '',
+				},
+			]);
+
+			const data = {
+				apiKey: 'test-key',
+				domain: 'example.com',
+			};
+
+			expect(() => service.checkCredentialData('apiCredential', data, ownerUser)).not.toThrow();
+		});
+
+		it('should pass when required field with valid default is not provided', () => {
+			credentialsHelper.getCredentialsProperties.mockReturnValue([
+				{
+					displayName: 'Host',
+					name: 'host',
+					type: 'string',
+					required: true,
+					default: 'https://api.example.com',
+				},
+			]);
+
+			const data = {};
+
+			expect(() => service.checkCredentialData('apiCredential', data, ownerUser)).not.toThrow();
+		});
+
+		it('should pass when credential has no required fields', () => {
+			credentialsHelper.getCredentialsProperties.mockReturnValue([
+				{
+					displayName: 'Optional Field',
+					name: 'optionalField',
+					type: 'string',
+					required: false,
+					default: '',
+				},
+			]);
+
+			const data = {};
+
+			expect(() => service.checkCredentialData('apiCredential', data, ownerUser)).not.toThrow();
+		});
+
+		it('should call validateExternalSecretsPermissions', () => {
+			credentialsHelper.getCredentialsProperties.mockReturnValue([]);
+			const validateSpy = jest.spyOn(validation, 'validateExternalSecretsPermissions');
+
+			const data = { apiKey: 'test-key' };
+
+			service.checkCredentialData('apiCredential', data, ownerUser);
+
+			expect(validateSpy).toHaveBeenCalledWith(ownerUser, data);
+		});
+
+		it('should throw BadRequestError when required field is missing and has no default', () => {
+			credentialsHelper.getCredentialsProperties.mockReturnValue([
+				{
+					displayName: 'API Key',
+					name: 'apiKey',
+					type: 'string',
+					required: true,
+					default: undefined,
+				},
+			]);
+
+			const data = {}; // apiKey is missing
+
+			expect(() => service.checkCredentialData('apiCredential', data, ownerUser)).toThrow(
+				'The field "apiKey" is mandatory for credentials of type "apiCredential"',
+			);
+		});
+
+		it('should throw when required field value is undefined', () => {
+			credentialsHelper.getCredentialsProperties.mockReturnValue([
+				{
+					displayName: 'API Key',
+					name: 'apiKey',
+					type: 'string',
+					required: true,
+					default: '',
+				},
+			]);
+
+			const data = { apiKey: undefined };
+
+			// @ts-expect-error - Testing edge case with undefined value
+			expect(() => service.checkCredentialData('apiCredential', data, ownerUser)).toThrow(
+				'The field "apiKey" is mandatory for credentials of type "apiCredential"',
+			);
+		});
+
+		it('should throw when required field value is empty string', () => {
+			credentialsHelper.getCredentialsProperties.mockReturnValue([
+				{
+					displayName: 'API Key',
+					name: 'apiKey',
+					type: 'string',
+					required: true,
+					default: '',
+				},
+			]);
+
+			const data = { apiKey: '' };
+
+			expect(() => service.checkCredentialData('apiCredential', data, ownerUser)).toThrow(
+				'The field "apiKey" is mandatory for credentials of type "apiCredential"',
+			);
 		});
 	});
 });

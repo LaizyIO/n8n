@@ -1,4 +1,4 @@
-import { DynamicTool } from 'langchain/tools';
+import { DynamicTool } from '@langchain/classic/tools';
 import {
 	type IExecuteFunctions,
 	NodeConnectionTypes,
@@ -10,7 +10,7 @@ import {
 	type INodeExecutionData,
 } from 'n8n-workflow';
 
-import { logWrapper } from '@utils/logWrapper';
+import { logWrapper } from '@n8n/ai-utilities';
 import { getConnectionHintNoticeField } from '@utils/sharedFields';
 
 async function getTool(

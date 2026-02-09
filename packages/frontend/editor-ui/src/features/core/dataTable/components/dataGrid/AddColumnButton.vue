@@ -18,7 +18,7 @@ import {
 	N8nInput,
 	N8nInputLabel,
 	N8nOption,
-	N8nPopoverReka,
+	N8nPopover,
 	N8nSelect,
 	N8nText,
 	N8nTooltip,
@@ -80,7 +80,7 @@ const onAddButtonClicked = async () => {
 		let errorDescription = response.errorMessage;
 		// Provide custom error message for conflict (column already exists)
 		if (response.httpStatus === 409) {
-			errorMessage = i18n.baseText('dataTable.addColumn.alreadyExistsError', {
+			errorMessage = i18n.baseText('dataTable.column.alreadyExistsError', {
 				interpolate: { name: columnName.value },
 			});
 			errorDescription = response.errorMessage?.includes('system')
@@ -107,8 +107,9 @@ const handlePopoverOpenChange = async (open: boolean) => {
 		return;
 	}
 	popoverOpen.value = open;
-	// Focus name input when opening popover
+	// Reset error state and focus name input when opening popover
 	if (open) {
+		error.value = null;
 		await nextTick(() => {
 			nameInputRef.value?.focus();
 		});
@@ -133,7 +134,7 @@ const onInput = debounce(validateName, { debounceTime: 100 });
 <template>
 	<N8nTooltip :disabled="popoverOpen" :content="i18n.baseText('dataTable.addColumn.label')">
 		<div class="add-column-header-component-wrapper">
-			<N8nPopoverReka
+			<N8nPopover
 				:id="popoverId"
 				:open="popoverOpen"
 				:popper-options="{ strategy: 'fixed' }"
@@ -230,7 +231,7 @@ const onInput = debounce(validateName, { debounceTime: 100 });
 						</div>
 					</div>
 				</template>
-			</N8nPopoverReka>
+			</N8nPopover>
 		</div>
 	</N8nTooltip>
 </template>

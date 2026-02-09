@@ -4,7 +4,7 @@ import type { DocumentInterface } from '@langchain/core/documents';
 import type { Embeddings } from '@langchain/core/embeddings';
 import type { VectorStore } from '@langchain/core/vectorstores';
 import { mock } from 'jest-mock-extended';
-import type { DynamicTool } from 'langchain/tools';
+import type { DynamicTool } from '@langchain/classic/tools';
 import type {
 	IExecuteFunctions,
 	ISupplyDataFunctions,
@@ -15,8 +15,10 @@ import type {
 import { createVectorStoreNode } from './createVectorStoreNode';
 import type { VectorStoreNodeConstructorArgs } from './types';
 
-jest.mock('@utils/logWrapper', () => ({
+jest.mock('@n8n/ai-utilities', () => ({
 	logWrapper: jest.fn().mockImplementation((val: DynamicTool) => ({ logWrapped: val })),
+	getMetadataFiltersValues: jest.fn().mockReturnValue(undefined),
+	logAiEvent: jest.fn(),
 }));
 
 const DEFAULT_PARAMETERS = {

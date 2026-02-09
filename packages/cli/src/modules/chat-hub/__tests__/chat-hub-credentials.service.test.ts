@@ -1,20 +1,36 @@
-import type { User } from '@n8n/db';
-import { mock } from 'jest-mock-extended';
+import type {
+	CredentialsEntity,
+	Project,
+	ProjectRepository,
+	SharedWorkflowRepository,
+	User,
+} from '@n8n/db';
 import type { EntityManager } from '@n8n/typeorm';
+import { mock } from 'jest-mock-extended';
 import type { INodeCredentials } from 'n8n-workflow';
 
-import {
-	ChatHubCredentialsService,
-	type CredentialWithProjectId,
-} from '../chat-hub-credentials.service';
 import type { CredentialsFinderService } from '@/credentials/credentials-finder.service';
+import type { CredentialsService } from '@/credentials/credentials.service';
 import { BadRequestError } from '@/errors/response-errors/bad-request.error';
 import { ForbiddenError } from '@/errors/response-errors/forbidden.error';
-import type { ChatHubLLMProvider } from '@n8n/api-types';
+
+import { ChatHubCredentialsService } from '../chat-hub-credentials.service';
+
+const CREDENTIAL_ID = 'credential-id-123';
+const PERSONAL_PROJECT_ID = 'personal-project-id';
 
 describe('ChatHubCredentialsService', () => {
+	const credentialsService = mock<CredentialsService>();
+	const projectRepository = mock<ProjectRepository>();
+	const sharedWorkflowRepository = mock<SharedWorkflowRepository>();
 	const credentialsFinderService = mock<CredentialsFinderService>();
-	const service = new ChatHubCredentialsService(credentialsFinderService);
+
+	const service = new ChatHubCredentialsService(
+		credentialsService,
+		sharedWorkflowRepository,
+		credentialsFinderService,
+		projectRepository,
+	);
 
 	const mockUser = mock<User>({ id: 'user-123' });
 	const mockTrx = mock<EntityManager>();
@@ -23,222 +39,130 @@ describe('ChatHubCredentialsService', () => {
 		jest.resetAllMocks();
 	});
 
-	describe('ensureCredentials', () => {
+	describe('ensureCredentialAccess', () => {
 		it('should return credential when user has access and credential is found', async () => {
-			const mockCredential = mock<CredentialWithProjectId>({
-				id: 'cred-123',
+			const mockCredential = mock<CredentialsEntity>({
+				id: CREDENTIAL_ID,
 				name: 'OpenAI Credentials',
 				type: 'openAiApi',
-				projectId: 'project-456',
 			});
 
-			const credentials: INodeCredentials = {
-				openAiApi: { id: 'cred-123', name: 'OpenAI Credentials' },
-			};
+			credentialsFinderService.findCredentialForUser.mockResolvedValue(mockCredential);
+			const result = await service.ensureCredentialAccess(mockUser, CREDENTIAL_ID);
 
-			credentialsFinderService.findAllCredentialsForUser.mockResolvedValue([mockCredential]);
-
-			const result = await service.ensureCredentials(
-				mockUser,
-				'openai' as ChatHubLLMProvider,
-				credentials,
-				mockTrx,
-			);
-
-			expect(result).toEqual(mockCredential);
-			expect(credentialsFinderService.findAllCredentialsForUser).toHaveBeenCalledWith(
+			expect(credentialsFinderService.findCredentialForUser).toHaveBeenCalledWith(
+				CREDENTIAL_ID,
 				mockUser,
 				['credential:read'],
-				mockTrx,
-				{ includeGlobalCredentials: true },
-			);
-		});
-
-		it('should include global credentials when fetching credentials', async () => {
-			const mockGlobalCredential = mock<CredentialWithProjectId>({
-				id: 'global-cred-123',
-				name: 'Global OpenAI Credentials',
-				type: 'openAiApi',
-				isGlobal: true,
-				projectId: 'project-global',
-			});
-
-			const credentials: INodeCredentials = {
-				openAiApi: { id: 'global-cred-123', name: 'Global OpenAI Credentials' },
-			};
-
-			credentialsFinderService.findAllCredentialsForUser.mockResolvedValue([mockGlobalCredential]);
-
-			const result = await service.ensureCredentials(
-				mockUser,
-				'openai' as ChatHubLLMProvider,
-				credentials,
-				mockTrx,
 			);
 
-			expect(result).toEqual(mockGlobalCredential);
-			expect(credentialsFinderService.findAllCredentialsForUser).toHaveBeenCalledWith(
-				mockUser,
-				['credential:read'],
-				mockTrx,
-				{ includeGlobalCredentials: true },
-			);
-		});
-
-		it('should throw BadRequestError when no credentials are provided', async () => {
-			const credentials: INodeCredentials = {};
-
-			credentialsFinderService.findAllCredentialsForUser.mockResolvedValue([]);
-
-			await expect(
-				service.ensureCredentials(mockUser, 'openai' as ChatHubLLMProvider, credentials, mockTrx),
-			).rejects.toThrow(BadRequestError);
-			await expect(
-				service.ensureCredentials(mockUser, 'openai' as ChatHubLLMProvider, credentials, mockTrx),
-			).rejects.toThrow('No credentials provided for the selected model provider');
+			expect(result.id).toEqual(mockCredential.id);
 		});
 
 		it('should throw ForbiddenError when user does not have access to the credential', async () => {
-			const mockCredential = mock<CredentialWithProjectId>({
-				id: 'other-cred-456',
-				name: 'Other Credentials',
-				type: 'openAiApi',
-				projectId: 'project-other',
-			});
+			credentialsFinderService.findCredentialForUser.mockResolvedValue(null);
 
-			const credentials: INodeCredentials = {
-				openAiApi: { id: 'cred-123', name: 'OpenAI Credentials' },
-			};
-
-			credentialsFinderService.findAllCredentialsForUser.mockResolvedValue([mockCredential]);
-
-			await expect(
-				service.ensureCredentials(mockUser, 'openai' as ChatHubLLMProvider, credentials, mockTrx),
-			).rejects.toThrow(ForbiddenError);
-			await expect(
-				service.ensureCredentials(mockUser, 'openai' as ChatHubLLMProvider, credentials, mockTrx),
-			).rejects.toThrow("You don't have access to the provided credentials");
-		});
-
-		it('should handle n8n provider by returning null credential ID', async () => {
-			const credentials: INodeCredentials = {};
-
-			credentialsFinderService.findAllCredentialsForUser.mockResolvedValue([]);
-
-			await expect(
-				service.ensureCredentials(mockUser, 'n8n' as ChatHubLLMProvider, credentials, mockTrx),
-			).rejects.toThrow(BadRequestError);
-		});
-
-		it('should handle custom-agent provider by returning null credential ID', async () => {
-			const credentials: INodeCredentials = {};
-
-			credentialsFinderService.findAllCredentialsForUser.mockResolvedValue([]);
-
-			await expect(
-				service.ensureCredentials(
-					mockUser,
-					'custom-agent' as ChatHubLLMProvider,
-					credentials,
-					mockTrx,
-				),
-			).rejects.toThrow(BadRequestError);
-		});
-
-		it('should return first credential when credential is shared through multiple projects', async () => {
-			const mockCredential = mock<CredentialWithProjectId>({
-				id: 'cred-123',
-				name: 'Shared Credentials',
-				type: 'openAiApi',
-				projectId: 'project-1',
-			});
-
-			const credentials: INodeCredentials = {
-				openAiApi: { id: 'cred-123', name: 'Shared Credentials' },
-			};
-
-			credentialsFinderService.findAllCredentialsForUser.mockResolvedValue([mockCredential]);
-
-			const result = await service.ensureCredentials(
-				mockUser,
-				'openai' as ChatHubLLMProvider,
-				credentials,
-				mockTrx,
+			await expect(service.ensureCredentialAccess(mockUser, CREDENTIAL_ID)).rejects.toThrow(
+				new ForbiddenError("You don't have access to the provided credentials"),
 			);
-
-			expect(result).toEqual(mockCredential);
-			expect(result).toHaveProperty('projectId');
 		});
 	});
 
-	describe('ensureCredentialById', () => {
-		it('should return credential when user has access to the credential', async () => {
-			const mockCredential = mock<CredentialWithProjectId>({
-				id: 'cred-123',
-				name: 'OpenAI Credentials',
-				type: 'openAiApi',
-				projectId: 'project-456',
+	describe('findPersonalProject', () => {
+		it('should find personal project', async () => {
+			const mockPersonalProject = mock<Project>({
+				id: PERSONAL_PROJECT_ID,
+				name: 'Personal Project',
+				type: 'personal',
 			});
 
-			credentialsFinderService.findAllCredentialsForUser.mockResolvedValue([mockCredential]);
+			projectRepository.getPersonalProjectForUser.mockResolvedValue(mockPersonalProject);
 
-			const result = await service.ensureCredentialById(mockUser, 'cred-123', mockTrx);
+			const result = await service.findPersonalProject(mockUser, mockTrx);
 
-			expect(result).toEqual(mockCredential);
-			expect(credentialsFinderService.findAllCredentialsForUser).toHaveBeenCalledWith(
-				mockUser,
-				['credential:read'],
+			expect(projectRepository.getPersonalProjectForUser).toHaveBeenCalledWith(
+				mockUser.id,
 				mockTrx,
-				{ includeGlobalCredentials: true },
 			);
+			expect(result).toEqual(mockPersonalProject);
 		});
 
-		it('should include global credentials when fetching by ID', async () => {
-			const mockGlobalCredential = mock<CredentialWithProjectId>({
-				id: 'global-cred-123',
-				name: 'Global OpenAI Credentials',
-				type: 'openAiApi',
-				isGlobal: true,
-				projectId: 'project-global',
-			});
+		it('should throw ForbiddenError when no personal project is found', async () => {
+			projectRepository.getPersonalProjectForUser.mockResolvedValue(null);
 
-			credentialsFinderService.findAllCredentialsForUser.mockResolvedValue([mockGlobalCredential]);
+			await expect(service.findPersonalProject(mockUser, mockTrx)).rejects.toThrow(
+				new ForbiddenError('Missing personal project'),
+			);
 
-			const result = await service.ensureCredentialById(mockUser, 'global-cred-123', mockTrx);
-
-			expect(result).toEqual(mockGlobalCredential);
-			expect(credentialsFinderService.findAllCredentialsForUser).toHaveBeenCalledWith(
-				mockUser,
-				['credential:read'],
+			expect(projectRepository.getPersonalProjectForUser).toHaveBeenCalledWith(
+				mockUser.id,
 				mockTrx,
-				{ includeGlobalCredentials: true },
 			);
 		});
+	});
 
-		it('should throw ForbiddenError when user does not have access to the credential', async () => {
-			const mockCredential = mock<CredentialWithProjectId>({
-				id: 'other-cred-456',
-				name: 'Other Credentials',
-				type: 'openAiApi',
-				projectId: 'project-other',
+	describe('findWorkflowCredentialAndProject', () => {
+		it('should find credential ID and owning project for workflow', async () => {
+			const mockCredentials: INodeCredentials = {
+				openAiApi: { id: CREDENTIAL_ID, name: 'OpenAI Credentials' },
+			};
+
+			const mockProject = mock<Project>({
+				id: PERSONAL_PROJECT_ID,
+				name: 'Personal Project',
+				type: 'personal',
 			});
 
-			credentialsFinderService.findAllCredentialsForUser.mockResolvedValue([mockCredential]);
+			sharedWorkflowRepository.getWorkflowOwningProject.mockResolvedValue(mockProject);
+			credentialsService.findAllCredentialIdsForWorkflow.mockResolvedValue([
+				mock<CredentialsEntity>({ id: CREDENTIAL_ID }),
+			]);
+			credentialsService.findAllGlobalCredentialIds.mockResolvedValue([]);
 
-			await expect(service.ensureCredentialById(mockUser, 'cred-123', mockTrx)).rejects.toThrow(
-				ForbiddenError,
+			const result = await service.findWorkflowCredentialAndProject(
+				'openai',
+				mockCredentials,
+				'workflow-123',
 			);
-			await expect(service.ensureCredentialById(mockUser, 'cred-123', mockTrx)).rejects.toThrow(
-				"You don't have access to the provided credentials",
+			expect(sharedWorkflowRepository.getWorkflowOwningProject).toHaveBeenCalledWith(
+				'workflow-123',
+			);
+			expect(result).toEqual({
+				credentialId: CREDENTIAL_ID,
+				projectId: PERSONAL_PROJECT_ID,
+			});
+		});
+
+		it('should throw BadRequestError when no credentials provided for the selected model provider', async () => {
+			const mockCredentials: INodeCredentials = {
+				openAiApi: { id: CREDENTIAL_ID, name: 'OpenAI Credentials' },
+			};
+
+			await expect(
+				service.findWorkflowCredentialAndProject('anthropic', mockCredentials, 'workflow-123'),
+			).rejects.toThrow(
+				new BadRequestError('No credentials provided for the selected model provider'),
 			);
 		});
 
-		it('should throw ForbiddenError when credential is not found', async () => {
-			credentialsFinderService.findAllCredentialsForUser.mockResolvedValue([]);
+		it("should throw ForbiddenError when user doesn't have access to the provided credentials", async () => {
+			const mockCredentials: INodeCredentials = {
+				openAiApi: { id: CREDENTIAL_ID, name: 'OpenAI Credentials' },
+			};
 
-			await expect(service.ensureCredentialById(mockUser, 'cred-123', mockTrx)).rejects.toThrow(
-				ForbiddenError,
-			);
+			const mockProject = mock<Project>({
+				id: PERSONAL_PROJECT_ID,
+				name: 'Personal Project',
+				type: 'personal',
+			});
+
+			sharedWorkflowRepository.getWorkflowOwningProject.mockResolvedValue(mockProject);
+			credentialsService.findAllCredentialIdsForWorkflow.mockResolvedValue([]);
+			credentialsService.findAllGlobalCredentialIds.mockResolvedValue([]);
+
+			await expect(
+				service.findWorkflowCredentialAndProject('openai', mockCredentials, 'workflow-123'),
+			).rejects.toThrow(new ForbiddenError("You don't have access to the provided credentials"));
 		});
 	});
 });

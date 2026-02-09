@@ -1,6 +1,6 @@
 import type { BaseDocumentCompressor } from '@langchain/core/retrievers/document_compressors';
 import { VectorStore } from '@langchain/core/vectorstores';
-import { ContextualCompressionRetriever } from 'langchain/retrievers/contextual_compression';
+import { ContextualCompressionRetriever } from '@langchain/classic/retrievers/contextual_compression';
 import {
 	NodeConnectionTypes,
 	type INodeType,
@@ -9,7 +9,7 @@ import {
 	type SupplyData,
 } from 'n8n-workflow';
 
-import { logWrapper } from '@utils/logWrapper';
+import { logWrapper } from '@n8n/ai-utilities';
 
 export class RetrieverVectorStore implements INodeType {
 	description: INodeTypeDescription = {

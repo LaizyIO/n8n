@@ -1,10 +1,12 @@
 import type { AuthenticationMethod, ProjectRelation } from '@n8n/api-types';
 import type { AuthProviderType, User, IWorkflowDb } from '@n8n/db';
 import type {
+	CancellationReason,
 	IPersonalizationSurveyAnswersV4,
 	IRun,
 	IWorkflowBase,
 	IWorkflowExecutionDataProcess,
+	JsonValue,
 } from 'n8n-workflow';
 
 import type { ConcurrencyQueueType } from '@/concurrency/concurrency-control.service';
@@ -39,6 +41,13 @@ export type RelayEventMap = {
 	'first-production-workflow-succeeded': {
 		projectId: string;
 		workflowId: string;
+		userId: string | null;
+	};
+
+	'instance-first-production-workflow-failed': {
+		projectId: string;
+		workflowId: string;
+		workflowName: string;
 		userId: string;
 	};
 
@@ -86,6 +95,9 @@ export type RelayEventMap = {
 		user: UserLike;
 		workflow: IWorkflowDb;
 		publicApi: boolean;
+		previousWorkflow?: IWorkflowDb;
+		aiBuilderAssisted?: boolean;
+		settingsChanged?: Record<string, { from: JsonValue; to: JsonValue }>;
 	};
 
 	'workflow-activated': {
@@ -100,6 +112,7 @@ export type RelayEventMap = {
 		workflowId: string;
 		workflow: IWorkflowDb;
 		publicApi: boolean;
+		deactivatedVersionId: string | null;
 	};
 
 	'workflow-pre-execute': {
@@ -118,6 +131,32 @@ export type RelayEventMap = {
 		workflowId: string;
 		userIdSharer: string;
 		userIdList: string[];
+	};
+
+	'workflow-executed': {
+		user?: UserLike;
+		workflowId: string;
+		workflowName: string;
+		executionId: string;
+		source:
+			| 'user-manual'
+			| 'user-retry'
+			| 'webhook'
+			| 'trigger'
+			| 'error'
+			| 'cli'
+			| 'integrated'
+			| 'evaluation'
+			| 'chat';
+	};
+
+	'workflow-version-updated': {
+		user: UserLike;
+		workflowId: string;
+		workflowName: string;
+		versionId: string;
+		versionName?: string | null;
+		versionDescription?: string | null;
 	};
 
 	// #endregion
@@ -176,6 +215,15 @@ export type RelayEventMap = {
 		fieldsChanged: string[];
 	};
 
+	'user-mfa-enabled': {
+		user: UserLike;
+	};
+
+	'user-mfa-disabled': {
+		user: UserLike;
+		disableMethod: 'mfaCode' | 'recoveryCode';
+	};
+
 	'user-signed-up': {
 		user: UserLike;
 		userType: AuthProviderType;
@@ -230,6 +278,11 @@ export type RelayEventMap = {
 		publicApi: boolean;
 	};
 
+	'user-retrieved-workflow-version': {
+		userId: string;
+		publicApi: boolean;
+	};
+
 	'user-retrieved-all-workflows': {
 		userId: string;
 		publicApi: boolean;
@@ -258,6 +311,7 @@ export type RelayEventMap = {
 			| 'Reset password'
 			| 'New user invite'
 			| 'Resend invite'
+			| 'Workflow auto-deactivated'
 			| 'Workflow shared'
 			| 'Credentials shared'
 			| 'Project shared';
@@ -296,6 +350,7 @@ export type RelayEventMap = {
 			| 'New user invite'
 			| 'Resend invite'
 			| 'Workflow shared'
+			| 'Workflow auto-deactivated'
 			| 'Credentials shared'
 			| 'Project shared';
 		publicApi: boolean;
@@ -313,6 +368,7 @@ export type RelayEventMap = {
 		projectId?: string;
 		projectType?: string;
 		uiContext?: string;
+		isDynamic?: boolean;
 	};
 
 	'credentials-shared': {
@@ -328,6 +384,7 @@ export type RelayEventMap = {
 		user: UserLike;
 		credentialType: string;
 		credentialId: string;
+		isDynamic?: boolean;
 	};
 
 	'credentials-deleted': {
@@ -386,6 +443,15 @@ export type RelayEventMap = {
 
 	'execution-cancelled': {
 		executionId: string;
+		workflowId?: string;
+		workflowName?: string;
+		reason: CancellationReason;
+	};
+
+	'execution-deleted': {
+		user: UserLike;
+		executionIds: string[];
+		deleteBefore?: Date;
 	};
 
 	// #endregion
@@ -478,10 +544,23 @@ export type RelayEventMap = {
 	// #region Variable
 
 	'variable-created': {
+		user: UserLike;
+		variableId: string;
+		variableKey: string;
 		projectId?: string;
 	};
 
 	'variable-updated': {
+		user: UserLike;
+		variableId: string;
+		variableKey: string;
+		projectId?: string;
+	};
+
+	'variable-deleted': {
+		user: UserLike;
+		variableId: string;
+		variableKey: string;
 		projectId?: string;
 	};
 
@@ -495,6 +574,10 @@ export type RelayEventMap = {
 		isValid: boolean;
 		isNew: boolean;
 		errorMessage?: string;
+	};
+
+	'external-secrets-provider-reloaded': {
+		vaultType: string;
 	};
 
 	// #endregion
@@ -532,6 +615,19 @@ export type RelayEventMap = {
 	};
 
 	// #endregion
+
+	// #region SSO
+
+	'sso-user-project-access-updated': {
+		projectsRemoved: number;
+		projectsAdded: number;
+		userId: string;
+	};
+
+	'sso-user-instance-role-updated': {
+		role: string;
+		userId: string;
+	};
 
 	// #region runner
 
@@ -572,6 +668,29 @@ export type RelayEventMap = {
 		workflowId: string;
 		hostId: string;
 		jobId: string;
+	};
+
+	// #endregion
+
+	// #region workflow history compaction
+	'history-compacted': {
+		workflowsProcessed: number;
+		totalVersionsSeen: number;
+		totalVersionsDeleted: number;
+		errorCount: number;
+		durationMs: number;
+		windowStartIso: string;
+		windowEndIso: string;
+		compactionStartTime: Date;
+	};
+	// #endregion
+
+	// #region Instance Policies
+
+	'instance-policies-updated': {
+		user: UserLike;
+		settingName: '2fa_enforcement' | 'workflow_publishing' | 'workflow_sharing';
+		value: boolean;
 	};
 
 	// #endregion

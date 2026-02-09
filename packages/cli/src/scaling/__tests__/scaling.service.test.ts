@@ -70,7 +70,7 @@ describe('ScalingService', () => {
 		QUEUE_NAME,
 		{
 			prefix: globalConfig.queue.bull.prefix,
-			settings: globalConfig.queue.bull.settings,
+			settings: { ...globalConfig.queue.bull.settings, maxStalledCount: 0 },
 			createClient: expect.any(Function),
 		},
 	];
@@ -456,6 +456,54 @@ describe('ScalingService', () => {
 			await scalingService.recoverFromQueue();
 
 			expect(executionRepository.markAsCrashed).not.toHaveBeenCalled();
+		});
+	});
+
+	describe('MCP response handling', () => {
+		it('should process mcp-response messages without throwing', async () => {
+			await scalingService.setupQueue();
+
+			const messageHandler = queue.on.mock.calls.find(
+				([event]) => (event as string) === 'global:progress',
+			)?.[1] as (jobId: JobId, msg: unknown) => void;
+			expect(messageHandler).toBeDefined();
+
+			const mcpResponseMessage = {
+				kind: 'mcp-response',
+				executionId: 'exec-123',
+				mcpType: 'service',
+				sessionId: 'session-456',
+				messageId: 'msg-789',
+				response: { success: true },
+				workerId: 'worker-abc',
+			};
+
+			// Should not throw - all mains receive and try to process MCP responses
+			// Only the one with the pending response/session will handle it successfully
+			// The handler is async but we verify it doesn't throw synchronously
+			expect(() => messageHandler('job-999', mcpResponseMessage)).not.toThrow();
+		});
+
+		it('should handle mcp-response for trigger type', async () => {
+			await scalingService.setupQueue();
+
+			const messageHandler = queue.on.mock.calls.find(
+				([event]) => (event as string) === 'global:progress',
+			)?.[1] as (jobId: JobId, msg: unknown) => void;
+			expect(messageHandler).toBeDefined();
+
+			const mcpTriggerResponseMessage = {
+				kind: 'mcp-response',
+				executionId: 'exec-456',
+				mcpType: 'trigger',
+				sessionId: 'session-trigger',
+				messageId: 'msg-trigger',
+				response: { toolResult: 'test-data' },
+				workerId: 'worker-xyz',
+			};
+
+			// Should not throw for trigger type either
+			expect(() => messageHandler('job-trigger', mcpTriggerResponseMessage)).not.toThrow();
 		});
 	});
 });

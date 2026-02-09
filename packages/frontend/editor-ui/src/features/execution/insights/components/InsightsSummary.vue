@@ -1,26 +1,25 @@
 <script setup lang="ts">
 import { useTelemetry } from '@/app/composables/useTelemetry';
-import { useSettingsStore } from '@/app/stores/settings.store';
 import { VIEWS } from '@/app/constants';
 import {
 	INSIGHT_IMPACT_TYPES,
 	INSIGHTS_UNIT_IMPACT_MAPPING,
 } from '@/features/execution/insights/insights.constants';
 import type { InsightsSummaryDisplay } from '@/features/execution/insights/insights.types';
-import type { InsightsDateRange, InsightsSummary } from '@n8n/api-types';
+import type { DateValue } from '@internationalized/date';
+import type { InsightsSummary } from '@n8n/api-types';
+import { N8nIcon, N8nTooltip } from '@n8n/design-system';
 import { useI18n } from '@n8n/i18n';
 import { smartDecimal } from '@n8n/utils/number/smartDecimal';
-import { computed, ref, useCssModule, onMounted } from 'vue';
+import { computed, useCssModule } from 'vue';
 import { I18nT } from 'vue-i18n';
 import { useRoute } from 'vue-router';
-import { getTimeRangeLabels } from '../insights.utils';
+import { formatDateRange, getMatchingPreset, getTimeRangeLabels } from '../insights.utils';
 
-import { N8nCallout, N8nIcon, N8nLink, N8nText, N8nTooltip } from '@n8n/design-system';
-
-const INSIGHTS_QUEUE_MODE_WARNING_DISMISSED_KEY = 'n8n-insights-queue-mode-warning-dismissed';
 const props = defineProps<{
 	summary: InsightsSummaryDisplay;
-	timeRange: InsightsDateRange['key'];
+	startDate?: DateValue;
+	endDate?: DateValue;
 	loading?: boolean;
 }>();
 
@@ -28,25 +27,20 @@ const i18n = useI18n();
 const route = useRoute();
 const $style = useCssModule();
 const telemetry = useTelemetry();
-const settingsStore = useSettingsStore();
 
 const timeRangeLabels = getTimeRangeLabels();
 
-// Queue mode warning dismissal state
-const isQueueModeWarningDismissed = ref(false);
+const displayDateRangeLabel = computed(() => {
+	const timeRangeKey = getMatchingPreset({
+		start: props.startDate,
+		end: props.endDate,
+	});
 
-onMounted(() => {
-	isQueueModeWarningDismissed.value =
-		localStorage.getItem(INSIGHTS_QUEUE_MODE_WARNING_DISMISSED_KEY) === 'true';
-});
+	if (timeRangeKey) {
+		return timeRangeLabels[timeRangeKey];
+	}
 
-const dismissQueueModeWarning = () => {
-	localStorage.setItem(INSIGHTS_QUEUE_MODE_WARNING_DISMISSED_KEY, 'true');
-	isQueueModeWarningDismissed.value = true;
-};
-
-const shouldShowQueueModeWarning = computed(() => {
-	return settingsStore.isQueueModeEnabled && !isQueueModeWarningDismissed.value;
+	return formatDateRange({ start: props.startDate, end: props.endDate });
 });
 
 const summaryTitles = computed<Record<keyof InsightsSummary, string>>(() => ({
@@ -92,38 +86,6 @@ const trackTabClick = (insightType: keyof InsightsSummary) => {
 
 <template>
 	<div :class="$style.insightsWrapper">
-		<N8nCallout
-			v-if="shouldShowQueueModeWarning"
-			:class="$style.queueModeWarning"
-			theme="warning"
-			data-test-id="insights-queue-mode-warning"
-			round-corners
-		>
-			<N8nText color="text-base" size="small">
-				{{ i18n.baseText('insights.banner.queueMode.warning') }}
-				<N8nLink
-					size="small"
-					:href="i18n.baseText('insights.banner.queueMode.warning.link.url')"
-					new-window
-					theme="text"
-					:underline="false"
-				>
-					<span :class="$style.underlined">
-						{{ i18n.baseText('insights.banner.queueMode.warning.link.text') }}
-					</span>
-					↗
-				</N8nLink>
-			</N8nText>
-			<template #trailingContent>
-				<N8nIcon
-					icon="x"
-					:title="i18n.baseText('generic.dismiss')"
-					class="clickable"
-					data-test-id="insights-queue-mode-warning-close"
-					@click="dismissQueueModeWarning"
-				/>
-			</template>
-		</N8nCallout>
 		<div :class="$style.insights">
 			<ul data-test-id="insights-summary-tabs">
 				<li
@@ -158,7 +120,7 @@ const trackTabClick = (insightType: keyof InsightsSummary) => {
 								</N8nTooltip>
 							</strong>
 							<small :class="$style.days">
-								{{ timeRangeLabels[timeRange] }}
+								{{ displayDateRangeLabel }}
 							</small>
 							<span v-if="value === 0 && id === 'timeSaved'" :class="$style.empty">
 								<em>--</em>
@@ -238,6 +200,12 @@ const trackTabClick = (insightType: keyof InsightsSummary) => {
 
 			&:first-child {
 				border-left: 0;
+			}
+
+			> span {
+				display: flex;
+				width: 100%;
+				height: 100%;
 			}
 		}
 
