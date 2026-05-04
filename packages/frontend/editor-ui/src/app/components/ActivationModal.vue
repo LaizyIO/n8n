@@ -74,11 +74,13 @@ const showExecutionsList = async () => {
 		router
 			.push({
 				name: VIEWS.EXECUTION_PREVIEW,
-				params: { name: currentWorkflow, executionId: activeExecution.id },
+				params: { workflowId: currentWorkflow, executionId: activeExecution.id },
 			})
 			.catch(() => {});
 	} else {
-		router.push({ name: VIEWS.EXECUTION_HOME, params: { name: currentWorkflow } }).catch(() => {});
+		router
+			.push({ name: VIEWS.EXECUTION_HOME, params: { workflowId: currentWorkflow } })
+			.catch(() => {});
 	}
 	uiStore.closeModal(WORKFLOW_ACTIVE_MODAL_KEY);
 };
@@ -132,10 +134,12 @@ const handleCheckboxChange = (checkboxValue: string | number | boolean) => {
 }
 
 .footer {
-	text-align: right;
+	display: flex;
+	justify-content: flex-end;
+	align-items: center;
 
-	> * {
-		margin-left: var(--spacing--sm);
+	> button {
+		margin-left: auto;
 	}
 }
 </style>

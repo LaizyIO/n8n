@@ -18,6 +18,16 @@ export const MODULE_NAMES = [
 	'log-streaming',
 	'ldap',
 	'quick-connect',
+	'workflow-builder',
+	'favorites',
+	'redaction',
+	'instance-registry',
+	'instance-ai',
+	'otel',
+	'token-exchange',
+	'instance-version-history',
+	'encryption-key-manager',
+	'oauth-jwe',
 ] as const;
 
 export type ModuleName = (typeof MODULE_NAMES)[number];

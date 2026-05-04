@@ -223,6 +223,15 @@ function getFieldDescription(field: ResourceMapperField): string {
 			}) || ''
 		);
 	}
+
+	if (resourceMapperMode.value === 'add' && field.required) {
+		return (
+			locale.baseText('resourceMapper.mandatoryField.title', {
+				interpolate: { fieldWord: singularFieldWord.value },
+			}) || ''
+		);
+	}
+
 	return '';
 }
 
@@ -328,10 +337,9 @@ defineExpose({
 						<N8nIcon icon="triangle-alert" size="small" color="warning" />
 					</N8nTooltip>
 					<N8nIconButton
+						variant="ghost"
 						icon="refresh-cw"
-						type="tertiary"
 						size="small"
-						:text="true"
 						:title="locale.baseText('generic.refresh')"
 						:disabled="props.refreshInProgress"
 						@click="onParameterActionSelected('refreshFieldList')"
@@ -363,33 +371,17 @@ defineExpose({
 			}"
 		>
 			<div
-				v-if="resourceMapperMode === 'add' && field.required"
-				:class="['delete-option', 'mt-2xs', $style.parameterTooltipIcon]"
-			>
-				<N8nTooltip placement="top">
-					<template #content>
-						<span>{{
-							locale.baseText('resourceMapper.mandatoryField.title', {
-								interpolate: { fieldWord: singularFieldWord },
-							})
-						}}</span>
-					</template>
-					<N8nIcon icon="circle-help" />
-				</N8nTooltip>
-			</div>
-			<div
-				v-else-if="
+				v-if="
 					!isMatchingField(
 						field.name,
 						props.paramValue.matchingColumns,
 						props.showMatchingColumnsSelector,
-					)
+					) && !(resourceMapperMode === 'add' && field.required)
 				"
 				:class="['delete-option', 'mt-5xs']"
 			>
 				<N8nIconButton
-					type="tertiary"
-					text
+					variant="ghost"
 					size="small"
 					icon="trash-2"
 					:data-test-id="`remove-field-button-${getParsedFieldName(field.name)}`"
@@ -487,13 +479,6 @@ defineExpose({
 			border-color: var(--color--danger);
 		}
 	}
-}
-
-.parameterTooltipIcon {
-	font-size: var(--font-size--2xs);
-	color: var(--color--text--tint-1) !important;
-	width: 26px; // match trash button size
-	text-align: center;
 }
 
 .addOption {

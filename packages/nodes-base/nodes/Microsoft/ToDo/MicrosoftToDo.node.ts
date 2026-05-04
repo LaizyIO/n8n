@@ -25,6 +25,7 @@ export class MicrosoftToDo implements INodeType {
 		version: 1,
 		subtitle: '={{$parameter["operation"] + ": " + $parameter["resource"]}}',
 		description: 'Consume Microsoft To Do API.',
+		schemaPath: 'Microsoft/ToDo',
 		defaults: {
 			name: 'Microsoft To Do',
 		},

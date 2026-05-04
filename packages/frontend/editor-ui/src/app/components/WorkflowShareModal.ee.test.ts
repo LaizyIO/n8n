@@ -17,6 +17,18 @@ import { useWorkflowsStore } from '@/app/stores/workflows.store';
 import { useWorkflowsEEStore } from '@/app/stores/workflows.ee.store';
 import { useProjectsStore } from '@/features/collaboration/projects/projects.store';
 import { useRolesStore } from '@/app/stores/roles.store';
+import type { ProjectSharingData } from '@/features/collaboration/projects/projects.types';
+
+const mockWorkflowDocumentState = reactive({
+	homeProject: null as ProjectSharingData | null,
+	scopes: [] as string[],
+	sharedWithProjects: [] as ProjectSharingData[],
+	name: '',
+});
+vi.mock('@/app/stores/workflowDocument.store', () => ({
+	useWorkflowDocumentStore: () => mockWorkflowDocumentState,
+	createWorkflowDocumentId: (id: string) => `${id}@latest`,
+}));
 
 const mockRouteQuery = reactive<Record<string, string>>({});
 vi.mock('vue-router', async (importOriginal) => {
@@ -73,7 +85,6 @@ let workflowsStore: MockedStore<typeof useWorkflowsStore>;
 let workflowsEEStore: MockedStore<typeof useWorkflowsEEStore>;
 let projectsStore: MockedStore<typeof useProjectsStore>;
 let rolesStore: MockedStore<typeof useRolesStore>;
-
 describe('WorkflowShareModal.ee.vue', () => {
 	beforeEach(() => {
 		settingsStore = mockedStore(useSettingsStore);
@@ -84,11 +95,19 @@ describe('WorkflowShareModal.ee.vue', () => {
 
 		// Reset route query
 		Object.keys(mockRouteQuery).forEach((key) => delete mockRouteQuery[key]);
+		mockWorkflowDocumentState.homeProject = null;
+		mockWorkflowDocumentState.sharedWithProjects = [];
+		mockWorkflowDocumentState.scopes = [];
+		mockWorkflowDocumentState.name = '';
 
 		// Set up default store state
 		settingsStore.settings.enterprise = { sharing: true } as FrontendSettings['enterprise'];
 		workflowsEEStore.getWorkflowOwnerName = vi.fn(() => 'Owner Name');
 		projectsStore.personalProjects = [createProjectListItem()];
+		projectsStore.searchShareableProjects.mockResolvedValue({
+			count: projectsStore.personalProjects.length,
+			data: projectsStore.personalProjects,
+		});
 		rolesStore.processedWorkflowRoles = [
 			{
 				displayName: 'Editor',
@@ -117,6 +136,15 @@ describe('WorkflowShareModal.ee.vue', () => {
 		// Set route query to indicate new workflow
 		mockRouteQuery.new = 'true';
 
+		const homeProject: ProjectSharingData = {
+			id: 'personal-project-id',
+			name: 'Personal Project',
+			type: ProjectTypes.Personal,
+			icon: null,
+			createdAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString(),
+		};
+
 		workflowsStore.workflow = {
 			id: '',
 			name: 'My workflow',
@@ -129,7 +157,10 @@ describe('WorkflowShareModal.ee.vue', () => {
 			scopes: [],
 			nodes: [],
 			connections: {},
+			homeProject,
 		};
+
+		mockWorkflowDocumentState.homeProject = homeProject;
 
 		const saveWorkflowSharedWithSpy = vi.spyOn(workflowsEEStore, 'saveWorkflowSharedWith');
 
@@ -158,17 +189,26 @@ describe('WorkflowShareModal.ee.vue', () => {
 	});
 
 	describe('personal space restriction message', () => {
-		it('should show personal space restriction message when in personal space and lacking share permission', async () => {
+		it('should show disabled select with tooltip when in personal space and lacking share permission', async () => {
 			// Mock no share permission
 			mockGetResourcePermissions.mockReturnValue({
 				workflow: { share: false },
 			});
 
-			// Set current project as personal project
-			projectsStore.currentProject = createTestProject({
+			// Set personal project
+			projectsStore.personalProject = createTestProject({
 				id: 'personal-project-id',
 				type: ProjectTypes.Personal,
 			});
+
+			const homeProject: ProjectSharingData = {
+				id: 'personal-project-id',
+				name: 'Personal Project',
+				type: ProjectTypes.Personal,
+				icon: null,
+				createdAt: new Date().toISOString(),
+				updatedAt: new Date().toISOString(),
+			};
 
 			workflowsStore.workflow = {
 				id: 'workflow-1',
@@ -182,17 +222,23 @@ describe('WorkflowShareModal.ee.vue', () => {
 				scopes: [],
 				nodes: [],
 				connections: {},
+				homeProject,
 			};
+
+			mockWorkflowDocumentState.homeProject = homeProject;
 
 			const props = {
 				data: { id: 'workflow-1' },
 			};
-			const { getByText } = renderComponent({ props });
+			const { getByTestId, queryByText } = renderComponent({ props });
 
 			await waitFor(() => {
+				// Should show disabled select with tooltip instead of info tip
+				expect(getByTestId('project-sharing-select')).toBeInTheDocument();
+				// Should not show the old restriction info tip
 				expect(
-					getByText("You don't have permission to share personal workflows"),
-				).toBeInTheDocument();
+					queryByText("You don't have permission to share personal workflows"),
+				).not.toBeInTheDocument();
 			});
 		});
 

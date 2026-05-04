@@ -22,7 +22,8 @@ import { projectsRoutes } from '@/features/collaboration/projects/projects.route
 import { MfaRequiredError } from '@n8n/rest-api-client';
 import { useRecentResources } from '@/features/shared/commandBar/composables/useRecentResources';
 import { usePostHog } from '@/app/stores/posthog.store';
-import { TEMPLATE_SETUP_EXPERIENCE } from '@/app/constants/experiments';
+import { RESOURCE_CENTER_EXPERIMENT, TEMPLATE_SETUP_EXPERIENCE } from '@/app/constants/experiments';
+import { useDynamicCredentials } from '@/features/resolvers/composables/useDynamicCredentials';
 import { useEnvFeatureFlag } from '@/features/shared/envFeatureFlag/useEnvFeatureFlag';
 
 const ChangePasswordView = async () =>
@@ -70,14 +71,17 @@ const TemplatesSearchView = async () =>
 const SettingsUsageAndPlan = async () =>
 	await import('@/features/settings/usage/views/SettingsUsageAndPlan.vue');
 const SettingsSso = async () => await import('@/features/settings/sso/views/SettingsSso.vue');
+const SettingsEncryptionKeys = async () =>
+	await import('@/features/settings/encryption-keys/views/SettingsEncryptionKeys.vue');
 const SignoutView = async () => await import('@/features/core/auth/views/SignoutView.vue');
 const SamlOnboarding = async () => await import('@/features/settings/sso/views/SamlOnboarding.vue');
 const SettingsSourceControl = async () =>
 	await import('@/features/integrations/sourceControl.ee/views/SettingsSourceControl.vue');
 const SettingsExternalSecrets = async () => {
-	const { check } = useEnvFeatureFlag();
+	const settingsStore = useSettingsStore();
+	const moduleConfig = settingsStore.moduleSettings['external-secrets'];
 
-	if (check.value('EXTERNAL_SECRETS_FOR_PROJECTS')) {
+	if (moduleConfig?.multipleConnections || moduleConfig?.forProjects) {
 		return await import(
 			'@/features/integrations/secretsProviders.ee/views/SettingsSecretsProviders.ee.vue'
 		);
@@ -89,6 +93,8 @@ const SettingsExternalSecrets = async () => {
 };
 const WorkerView = async () =>
 	await import('@/features/settings/orchestration.ee/views/WorkerView.vue');
+const SettingsInstanceRegistryView = async () =>
+	await import('@/features/settings/instanceRegistry/views/SettingsInstanceRegistryView.vue');
 const WorkflowHistory = async () =>
 	await import('@/features/workflows/workflowHistory/views/WorkflowHistory.vue');
 const WorkflowOnboardingView = async () => await import('@/app/views/WorkflowOnboardingView.vue');
@@ -99,12 +105,15 @@ const TestRunDetailView = async () =>
 const EvaluationRootView = async () =>
 	await import('@/features/ai/evaluation.ee/views/EvaluationsRootView.vue');
 const SettingsAIView = async () => await import('@/features/ai/assistant/views/SettingsAIView.vue');
+const SettingsAiGatewayView = async () =>
+	await import('@/features/ai/gateway/views/SettingsAiGatewayView.vue');
 const ResourceCenterView = async () =>
 	await import('@/experiments/resourceCenter/views/ResourceCenterView.vue');
-const ResourceCenterSectionView = async () =>
-	await import('@/experiments/resourceCenter/views/ResourceCenterSectionView.vue');
+
 const SecuritySettingsView = async () =>
 	await import('@/features/settings/security/SecuritySettings.vue');
+
+import { MIGRATION_REPORT_TARGET_VERSION } from '@n8n/api-types';
 
 const MigrationReportView = async () =>
 	await import('@/features/settings/migrationReport/MigrationRules.vue');
@@ -121,6 +130,39 @@ function getTemplatesRedirect(defaultRedirect: VIEWS[keyof VIEWS]): { name: stri
 
 	return false;
 }
+
+const RESOURCE_CENTER_FLAG_WAIT_TIMEOUT = 2000;
+
+const waitForPendingFeatureFlags = async (posthogStore: ReturnType<typeof usePostHog>) => {
+	let timeoutId: number | undefined;
+
+	await Promise.race([
+		posthogStore.waitForFeatureFlags(),
+		new Promise<void>((resolve) => {
+			timeoutId = window.setTimeout(resolve, RESOURCE_CENTER_FLAG_WAIT_TIMEOUT);
+		}),
+	]);
+
+	if (timeoutId !== undefined) {
+		window.clearTimeout(timeoutId);
+	}
+};
+
+const allowResourceCenterRoute = (
+	posthogStore: ReturnType<typeof usePostHog>,
+	next: NavigationGuardNext,
+) => {
+	if (
+		posthogStore.isVariantEnabled(
+			RESOURCE_CENTER_EXPERIMENT.name,
+			RESOURCE_CENTER_EXPERIMENT.variant,
+		)
+	) {
+		next();
+	} else {
+		next({ name: VIEWS.HOMEPAGE });
+	}
+};
 
 export const routes: RouteRecordRaw[] = [
 	{
@@ -244,17 +286,32 @@ export const routes: RouteRecordRaw[] = [
 		meta: {
 			middleware: ['authenticated'],
 		},
-	},
-	{
-		path: '/resource-center/section/:sectionId',
-		name: VIEWS.RESOURCE_CENTER_SECTION,
-		component: ResourceCenterSectionView,
-		meta: {
-			middleware: ['authenticated'],
+		beforeEnter: (_to, _from, next) => {
+			const posthogStore = usePostHog();
+
+			if (
+				posthogStore.isVariantEnabled(
+					RESOURCE_CENTER_EXPERIMENT.name,
+					RESOURCE_CENTER_EXPERIMENT.variant,
+				)
+			) {
+				next();
+				return;
+			}
+
+			if (!posthogStore.hasPendingFeatureFlags()) {
+				next({ name: VIEWS.HOMEPAGE });
+				return;
+			}
+
+			void waitForPendingFeatureFlags(posthogStore).then(() => {
+				allowResourceCenterRoute(posthogStore, next);
+			});
 		},
 	},
+
 	{
-		path: '/workflow/:name/debug/:executionId',
+		path: '/workflow/:workflowId/debug/:executionId',
 		name: VIEWS.EXECUTION_DEBUG,
 		component: NodeView,
 		meta: {
@@ -271,7 +328,7 @@ export const routes: RouteRecordRaw[] = [
 		},
 	},
 	{
-		path: '/workflow/:name/executions',
+		path: '/workflow/:workflowId/executions',
 		name: VIEWS.WORKFLOW_EXECUTIONS,
 		component: WorkflowExecutionsView,
 		meta: {
@@ -305,7 +362,7 @@ export const routes: RouteRecordRaw[] = [
 		],
 	},
 	{
-		path: '/workflow/:name/evaluation',
+		path: '/workflow/:workflowId/evaluation',
 		name: VIEWS.EVALUATION,
 		component: EvaluationRootView,
 		props: true,
@@ -378,7 +435,7 @@ export const routes: RouteRecordRaw[] = [
 			const newWorkflowId = generateNanoId();
 			return {
 				name: VIEWS.WORKFLOW,
-				params: { name: newWorkflowId },
+				params: { workflowId: newWorkflowId },
 				query: { ...to.query, new: 'true' },
 			};
 		},
@@ -418,7 +475,7 @@ export const routes: RouteRecordRaw[] = [
 		},
 	},
 	{
-		path: '/workflow/:name/:nodeId?',
+		path: '/workflow/:workflowId/:nodeId?',
 		name: VIEWS.WORKFLOW,
 		component: NodeView,
 		meta: {
@@ -554,6 +611,12 @@ export const routes: RouteRecordRaw[] = [
 			{
 				path: 'migration-report',
 				component: RouterView,
+				beforeEnter: () => {
+					if (!MIGRATION_REPORT_TARGET_VERSION) {
+						return { name: VIEWS.HOMEPAGE };
+					}
+					return true;
+				},
 				children: [
 					{
 						path: '',
@@ -605,12 +668,8 @@ export const routes: RouteRecordRaw[] = [
 				name: VIEWS.SECURITY_SETTINGS,
 				component: SecuritySettingsView,
 				meta: {
-					middleware: ['authenticated', 'custom', 'rbac'],
+					middleware: ['authenticated', 'rbac'],
 					middlewareOptions: {
-						custom: () => {
-							const { check } = useEnvFeatureFlag();
-							return check.value('PERSONAL_SECURITY_SETTINGS');
-						},
 						rbac: {
 							scope: ['securitySettings:manage'],
 						},
@@ -672,15 +731,47 @@ export const routes: RouteRecordRaw[] = [
 				},
 			},
 			{
-				path: 'resolvers',
-				name: VIEWS.RESOLVERS,
-				component: SettingsResolversView,
+				path: 'n8n-connect',
+				name: VIEWS.AI_GATEWAY_SETTINGS,
+				component: SettingsAiGatewayView,
 				meta: {
 					middleware: ['authenticated', 'custom'],
 					middlewareOptions: {
 						custom: () => {
-							const { check } = useEnvFeatureFlag();
-							return check.value('DYNAMIC_CREDENTIALS');
+							const settingsStore = useSettingsStore();
+							return settingsStore.isAiGatewayEnabled;
+						},
+					},
+					telemetry: {
+						pageCategory: 'settings',
+						getProperties() {
+							return {
+								feature: 'n8n-connect',
+							};
+						},
+					},
+				},
+			},
+			{
+				path: 'resolvers',
+				name: VIEWS.RESOLVERS,
+				component: SettingsResolversView,
+				meta: {
+					middleware: ['authenticated', 'rbac', 'custom'],
+					middlewareOptions: {
+						rbac: {
+							scope: [
+								'credentialResolver:read',
+								'credentialResolver:list',
+								'credentialResolver:create',
+								'credentialResolver:update',
+								'credentialResolver:delete',
+							],
+							options: { mode: 'allOf' },
+						},
+						custom: () => {
+							const { isEnabled } = useDynamicCredentials();
+							return isEnabled.value;
 						},
 					},
 					telemetry: {
@@ -688,6 +779,28 @@ export const routes: RouteRecordRaw[] = [
 						getProperties() {
 							return {
 								feature: 'resolvers',
+							};
+						},
+					},
+				},
+			},
+			{
+				path: 'project-roles/view/:roleSlug',
+				name: VIEWS.PROJECT_ROLE_VIEW,
+				component: async () => await import('@/features/project-roles/ProjectRoleView.vue'),
+				props: true,
+				meta: {
+					middleware: ['authenticated', 'enterprise'],
+					middlewareOptions: {
+						enterprise: {
+							feature: EnterpriseEditionFeature.CustomRoles,
+						},
+					},
+					telemetry: {
+						pageCategory: 'settings',
+						getProperties() {
+							return {
+								feature: 'project-roles',
 							};
 						},
 					},
@@ -816,6 +929,31 @@ export const routes: RouteRecordRaw[] = [
 				},
 			},
 			{
+				path: 'encryption-keys',
+				name: VIEWS.ENCRYPTION_KEYS_SETTINGS,
+				component: SettingsEncryptionKeys,
+				meta: {
+					middleware: ['authenticated', 'rbac', 'custom'],
+					middlewareOptions: {
+						rbac: {
+							scope: 'encryptionKey:manage',
+						},
+						custom: () => {
+							const { check } = useEnvFeatureFlag();
+							return check.value('ENCRYPTION_KEY_ROTATION');
+						},
+					},
+					telemetry: {
+						pageCategory: 'settings',
+						getProperties() {
+							return {
+								feature: 'encryption-keys',
+							};
+						},
+					},
+				},
+			},
+			{
 				path: 'log-streaming',
 				name: VIEWS.LOG_STREAMING_SETTINGS,
 				component: SettingsLogStreamingView,
@@ -828,6 +966,31 @@ export const routes: RouteRecordRaw[] = [
 					},
 					telemetry: {
 						pageCategory: 'settings',
+					},
+				},
+			},
+			{
+				path: 'instance-registry',
+				name: VIEWS.INSTANCE_REGISTRY,
+				component: SettingsInstanceRegistryView,
+				meta: {
+					middleware: ['authenticated', 'rbac', 'custom'],
+					middlewareOptions: {
+						rbac: {
+							scope: 'orchestration:read',
+						},
+						custom: () => {
+							const { check } = useEnvFeatureFlag();
+							return check.value('INSTANCE_REGISTRY');
+						},
+					},
+					telemetry: {
+						pageCategory: 'settings',
+						getProperties() {
+							return {
+								feature: 'instance-registry',
+							};
+						},
 					},
 				},
 			},
