@@ -1,6 +1,13 @@
-import type { INodeProperties, IExecuteFunctions } from 'n8n-workflow';
+import { NodeOperationError, tryToParseJsonToFormFields } from 'n8n-workflow';
+import type {
+	INodeProperties,
+	IExecuteFunctions,
+	IWebhookFunctions,
+	FormFieldsParameter,
+} from 'n8n-workflow';
 import { v4 as uuidv4 } from 'uuid';
 import { getSendAndWaitConfig, getSendAndWaitProperties } from '../../../utils/sendAndWait/utils';
+import { resolveRawData } from '../../Form/utils/utils';
 
 // Define our custom properties that will be added to the standard send and wait properties
 const customProperties: INodeProperties[] = [];
@@ -39,6 +46,27 @@ export async function execute(this: IExecuteFunctions, i: number, _instanceId: s
 				...field,
 				fieldId: `field-${index}`,
 			}));
+		} else if (defineForm === 'json') {
+			try {
+				const jsonOutput = this.getNodeParameter('jsonOutput', i, '', {
+					rawExpressions: true,
+				}) as string;
+				// resolveRawData is typed for IWebhookFunctions but only uses
+				// evaluateExpression(), which is also available on IExecuteFunctions.
+				// The cast is safe in practice and mirrors n8n's native sendAndWait
+				// helper (utils/sendAndWait/utils.ts).
+				const parsed: FormFieldsParameter = tryToParseJsonToFormFields(
+					resolveRawData(this as unknown as IWebhookFunctions, jsonOutput),
+				);
+				formFields = parsed.map((field, index) => ({
+					...field,
+					fieldId: `field-${index}`,
+				}));
+			} catch (error) {
+				throw new NodeOperationError(this.getNode(), (error as Error).message, {
+					description: (error as Error).message,
+				});
+			}
 		}
 	}
 
