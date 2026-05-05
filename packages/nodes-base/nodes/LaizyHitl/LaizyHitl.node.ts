@@ -92,7 +92,7 @@ export class LaizyHitl implements INodeType {
 						description: 'Wait for workflow to finish, return result in HTTP response',
 					},
 				],
-				default: 'onReceived',
+				default: 'lastNode',
 				description: 'How to respond to the webhook HTTP request',
 			},
 			{
