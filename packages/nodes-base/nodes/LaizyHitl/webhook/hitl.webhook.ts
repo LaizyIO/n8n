@@ -1,10 +1,86 @@
+import { jsonParse, tryToParseJsonToFormFields } from 'n8n-workflow';
 import type {
 	IWebhookFunctions,
 	IWebhookResponseData,
 	IDataObject,
 	IBinaryKeyData,
+	FormFieldsParameter,
 } from 'n8n-workflow';
 import { rm } from 'fs/promises';
+import { resolveRawData } from '../../Form/utils/utils';
+
+// Coerce a raw value (received via multipart/form-data, always a string)
+// into the expected JS type based on its fieldType. Mirrors the logic from
+// n8n native Form node: see `addFormResponseDataToReturnItem` in
+// packages/nodes-base/nodes/Form/utils/utils.ts.
+function coerceFieldValue(value: unknown, field: FormFieldsParameter[number]): unknown {
+	if (value === null || value === undefined) return null;
+
+	if (field.fieldType === 'html') {
+		return value;
+	}
+
+	let coerced: unknown = value;
+
+	if (field.fieldType === 'number') {
+		coerced = Number(value);
+	}
+	if (field.fieldType === 'text') {
+		coerced = String(value).trim();
+	}
+	if (
+		(field.multiselect || field.fieldType === 'checkbox' || field.fieldType === 'radio') &&
+		typeof coerced === 'string'
+	) {
+		try {
+			const parsed = jsonParse(coerced);
+			coerced = parsed;
+		} catch {
+			// Single value submitted as plain string (e.g. multipart "field-5=option 1")
+			// Wrap it as array for checkbox / multiselect, keep as string for single radio
+			if (field.fieldType === 'checkbox' || field.multiselect) {
+				coerced = [coerced];
+			}
+		}
+
+		if (field.fieldType === 'radio' && Array.isArray(coerced)) {
+			coerced = coerced[0];
+		}
+	}
+	if (field.fieldType === 'file' && field.multipleFiles && !Array.isArray(coerced)) {
+		coerced = [coerced];
+	}
+
+	return coerced;
+}
+
+// Retrieve formFields from node parameters so we can coerce types according
+// to each field's declared fieldType. Supports both `defineForm: 'fields'`
+// (UI editor) and `defineForm: 'json'` (JSON output mode, FEAT-050).
+function getFormFieldsForCoercion(context: IWebhookFunctions): FormFieldsParameter {
+	try {
+		const responseType = context.getNodeParameter('responseType', '') as string;
+		if (responseType !== 'customForm') return [];
+
+		const defineForm = context.getNodeParameter('defineForm', 'fields') as string;
+		if (defineForm === 'fields') {
+			return (context.getNodeParameter('formFields.values', []) as FormFieldsParameter) ?? [];
+		}
+		if (defineForm === 'json') {
+			const jsonOutput = context.getNodeParameter('jsonOutput', '', {
+				rawExpressions: true,
+			}) as string;
+			return tryToParseJsonToFormFields(resolveRawData(context, jsonOutput));
+		}
+		return [];
+	} catch (error) {
+		console.warn(
+			'[HITL Webhook] Could not load formFields for coercion:',
+			(error as Error).message,
+		);
+		return [];
+	}
+}
 
 export async function customHitlWebhook(this: IWebhookFunctions): Promise<IWebhookResponseData> {
 	console.log('[HITL Webhook] Processing HITL webhook response');
@@ -29,29 +105,52 @@ export async function customHitlWebhook(this: IWebhookFunctions): Promise<IWebho
 		}
 	} else if (req.method === 'POST' && bodyData) {
 		// Form submission: field-0, field-1, etc. or complex form data
-		if (typeof bodyData === 'object' && 'data' in bodyData) {
-			// Already processed multipart data
-			responseData = (bodyData as any).data;
-		} else if (typeof bodyData === 'object') {
+		// n8n parses multipart and exposes form fields either at the root of bodyData
+		// or wrapped under bodyData.data (when files are attached). Normalize both.
+		const sourceData: IDataObject =
+			typeof bodyData === 'object' && bodyData && 'data' in bodyData
+				? ((bodyData as any).data as IDataObject)
+				: (bodyData as IDataObject);
+
+		if (typeof sourceData === 'object' && sourceData) {
 			// Form data with field-X pattern or direct object
-			const fieldKeys = Object.keys(bodyData).filter((key) => key.startsWith('field-'));
+			const fieldKeys = Object.keys(sourceData).filter((key) => key.startsWith('field-'));
 
 			if (fieldKeys.length > 0) {
 				// Check if this is a single field (FreeText) or multiple fields (CustomForm)
 				if (fieldKeys.length === 1 && fieldKeys[0] === 'field-0') {
-					// Single field FreeText response
-					responseData = { text: (bodyData as any)['field-0'] };
+					// Single field FreeText response - no coercion needed
+					responseData = { text: (sourceData as any)['field-0'] };
 				} else {
-					// Multiple fields CustomForm response - preserve all field data
+					// Multiple fields CustomForm response
+					// Load formFields metadata and coerce values to expected types
+					const formFields = getFormFieldsForCoercion(this);
+					console.log('[HITL Webhook] FormFields loaded for coercion:', formFields.length);
+
 					responseData = {};
 					fieldKeys.forEach((key) => {
 						const fieldIndex = key.replace('field-', '');
-						responseData[`field_${fieldIndex}`] = (bodyData as any)[key];
+						const numericIndex = Number(fieldIndex);
+						const rawValue = (sourceData as any)[key];
+						const field = formFields[numericIndex];
+
+						let coercedValue: unknown = rawValue;
+						if (field) {
+							coercedValue = coerceFieldValue(rawValue, field);
+							if (rawValue !== coercedValue) {
+								console.log(`[HITL Webhook] Coerced field-${fieldIndex} (${field.fieldType}):`, {
+									from: rawValue,
+									to: coercedValue,
+								});
+							}
+						}
+
+						responseData[key] = coercedValue as IDataObject[string];
 					});
 				}
 			} else {
 				// Direct object without field-X pattern
-				responseData = bodyData as IDataObject;
+				responseData = sourceData;
 			}
 		} else {
 			responseData = { data: bodyData };
